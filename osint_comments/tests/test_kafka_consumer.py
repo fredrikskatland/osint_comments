@@ -1,6 +1,6 @@
 # test_kafka_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, ANY
 
 from kafka_consumer import KafkaConsumerClient
 from config import RAW_COMMENTS_TOPIC, KAFKA_BOOTSTRAP_SERVERS
@@ -33,6 +33,9 @@ def mock_kafka_consumer():
 def test_kafka_consumer_initialization():
     """Test initializing the KafkaConsumerClient."""
     with patch('kafka_consumer.KafkaConsumer') as mock_consumer_class:
+        # Reset the singleton instance for testing
+        KafkaConsumerClient._instance = None
+        
         # Test with default parameters
         client = KafkaConsumerClient()
         mock_consumer_class.assert_called_once_with(
@@ -44,8 +47,9 @@ def test_kafka_consumer_initialization():
             group_id="comment-analyzer-group"
         )
         
-        # Reset the mock
+        # Reset the mock and singleton instance for the second test
         mock_consumer_class.reset_mock()
+        KafkaConsumerClient._instance = None
         
         # Test with custom parameters
         custom_servers = ["custom-server:9092"]
@@ -132,6 +136,9 @@ def test_consume_messages_error_handling(mock_kafka_consumer):
 def test_close():
     """Test closing the Kafka consumer."""
     with patch('kafka_consumer.KafkaConsumer') as mock_consumer_class:
+        # Reset the singleton instance for testing
+        KafkaConsumerClient._instance = None
+        
         mock_consumer = MagicMock()
         mock_consumer_class.return_value = mock_consumer
         

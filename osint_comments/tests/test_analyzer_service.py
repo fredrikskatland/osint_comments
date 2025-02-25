@@ -1,7 +1,7 @@
 # test_analyzer_service.py
 import pytest
 import signal
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, ANY
 
 from analyzer_service import AnalyzerService
 from kafka_consumer import KafkaConsumerClient

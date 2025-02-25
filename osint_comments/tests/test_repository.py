@@ -48,10 +48,13 @@ def test_add_comment(session):
         "updatedAt": "2025-02-23T08:56:30.547Z",
         "score": 10,
     }
-    comment1 = repo.add_comment(comment_data, article, user)
-    comment2 = repo.add_comment(comment_data, article, user)
+    comment1, created1 = repo.add_comment(comment_data, article, user)
+    comment2, created2 = repo.add_comment(comment_data, article, user)
     # The same comment should not be added twice.
     assert comment1.id == comment2.id
     assert comment1.message == "Test comment"
     # Check that timestamps are correctly converted.
     assert isinstance(comment1.created_at, datetime)
+    # First comment should be created, second should not
+    assert created1 == True
+    assert created2 == False

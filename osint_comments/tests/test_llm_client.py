@@ -53,12 +53,15 @@ def openai_client():
 
 def test_openai_client_initialization():
     """Test initializing the OpenAIClient."""
-    with patch('openai.api_key', None), \
+    with patch('llm_client.OPENAI_API_KEY', ''), \
          patch('openai.OpenAI') as mock_openai:
         
         # Test with API key provided
         client = OpenAIClient(api_key="test_api_key")
         assert client.api_key == "test_api_key"
+        
+        # Reset the singleton instance for testing
+        OpenAIClient._instance = None
         
         # Test with missing API key
         with pytest.raises(ValueError):

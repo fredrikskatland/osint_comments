@@ -1,7 +1,7 @@
 # analysis_models.py
 from datetime import datetime
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 class CommentAnalysis(BaseModel):
     """Model for comment analysis results."""
@@ -28,10 +28,15 @@ class CommentAnalysis(BaseModel):
     analyzed_at: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of the analysis")
     error: bool = Field(default=False, description="Whether an error occurred during analysis")
     
-    @validator('max_category', 'max_score', pre=True, always=True)
-    def set_max_category_and_score(cls, v, values):
+    @field_validator('max_category', 'max_score', mode='before')
+    @classmethod
+    def set_max_category_and_score(cls, v, info):
         """Set the max_category and max_score based on the analysis scores."""
-        if 'max_category' in values or 'max_score' in values:
+        # Get the current values
+        values = info.data
+        
+        # Only proceed if we have the scores
+        if not all(k in values for k in ['aggressive_score', 'hateful_score', 'racist_score']):
             return v
             
         scores = {
@@ -43,10 +48,12 @@ class CommentAnalysis(BaseModel):
         max_category = max(scores, key=scores.get)
         max_score = scores[max_category]
         
-        if v is None and 'max_category' not in values:
+        # Return the appropriate value based on which field is being validated
+        if info.field_name == 'max_category':
             return max_category
-        elif v is None and 'max_score' not in values:
+        elif info.field_name == 'max_score':
             return max_score
+        
         return v
     
     @classmethod
