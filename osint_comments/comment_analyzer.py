@@ -3,10 +3,10 @@ import logging
 import time
 from typing import Dict, Any, Optional
 
-from config import ANALYSIS_THRESHOLD, FLAGGED_COMMENTS_TOPIC
-from llm_client import OpenAIClient
-from kafka_producer import KafkaProducerClient
-from analysis_models import CommentAnalysis
+from .config import ANALYSIS_THRESHOLD, FLAGGED_COMMENTS_TOPIC
+from .llm_client import OpenAIClient
+from .kafka_producer import KafkaProducer
+from .analysis_models import CommentAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -15,90 +15,87 @@ class CommentAnalyzer:
     Analyzes comments for harmful content and publishes the results to Kafka.
     """
     
-    def __init__(self, openai_client: Optional[OpenAIClient] = None, 
-                 kafka_producer: Optional[KafkaProducerClient] = None,
+    def __init__(self, llm_client: Optional[OpenAIClient] = None, 
+                 kafka_producer: Optional[KafkaProducer] = None,
                  threshold: float = ANALYSIS_THRESHOLD):
         """
         Initialize the CommentAnalyzer.
         
         Args:
-            openai_client: OpenAI client for analyzing comments
+            llm_client: OpenAI client for analyzing comments
             kafka_producer: Kafka producer for publishing results
             threshold: Threshold for flagging comments
         """
-        self.openai_client = openai_client or OpenAIClient()
-        self.kafka_producer = kafka_producer or KafkaProducerClient()
+        self.llm_client = llm_client or OpenAIClient()
+        self.kafka_producer = kafka_producer or KafkaProducer(topic=FLAGGED_COMMENTS_TOPIC)
         self.threshold = threshold
         logger.info(f"CommentAnalyzer initialized with threshold: {threshold}")
         
-    def process_comment(self, comment_data: Dict[str, Any]) -> CommentAnalysis:
+    def analyze_comment(self, comment_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process a comment by analyzing it and publishing the results to Kafka.
+        Analyze a comment and publish the results to Kafka if flagged.
         
         Args:
-            comment_data: Raw comment data from Kafka
+            comment_data: Raw comment data
             
         Returns:
-            The CommentAnalysis instance
+            The analysis result
         """
         try:
             # Extract the comment text
-            comment_text = comment_data.get('message', '')
+            comment_text = comment_data.get('content', '')
             comment_id = comment_data.get('id')
             
             if not comment_text:
                 logger.warning(f"Empty comment text for comment ID {comment_id}, skipping analysis")
-                return None
+                return {"error": "Empty comment text"}
                 
-            logger.info(f"Processing comment ID {comment_id}")
-            logger.debug(f"Comment text: {comment_text[:100]}...")
+            logger.info(f"Analyzing comment ID {comment_id}")
             
             # Analyze the comment
-            analysis_result = self.openai_client.analyze_comment(comment_text)
+            analysis_result = self.llm_client.analyze_text(comment_text)
             
-            # Create a CommentAnalysis instance
-            comment_analysis = CommentAnalysis.from_raw_analysis(
-                comment_data=comment_data,
-                analysis=analysis_result,
-                threshold=self.threshold
-            )
+            # Check if the comment should be flagged
+            is_flagged = analysis_result.get('is_flagged', False)
             
             # Log the analysis results
-            if comment_analysis.is_flagged:
-                logger.warning(
-                    f"Comment ID {comment_id} flagged as problematic: "
-                    f"{comment_analysis.max_category} ({comment_analysis.max_score:.2f})"
-                )
-            else:
-                logger.info(
-                    f"Comment ID {comment_id} not flagged: "
-                    f"max score {comment_analysis.max_score:.2f} for {comment_analysis.max_category}"
-                )
+            if is_flagged:
+                logger.warning(f"Comment ID {comment_id} flagged as problematic")
                 
-            # Publish the analysis results to Kafka
-            self._publish_analysis(comment_analysis)
+                # Publish the flagged comment to Kafka
+                self._publish_flagged_comment(comment_data, analysis_result)
+            else:
+                logger.info(f"Comment ID {comment_id} not flagged")
             
-            return comment_analysis
+            return analysis_result
             
         except Exception as e:
-            logger.error(f"Error processing comment: {e}")
-            return None
+            logger.error(f"Error analyzing comment: {e}")
+            return {"error": str(e)}
             
-    def _publish_analysis(self, analysis: CommentAnalysis) -> None:
+    def _publish_flagged_comment(self, comment_data: Dict[str, Any], analysis_result: Dict[str, Any]) -> None:
         """
-        Publish the analysis results to Kafka.
+        Publish a flagged comment to Kafka.
         
         Args:
-            analysis: The CommentAnalysis instance to publish
+            comment_data: Raw comment data
+            analysis_result: Analysis result
         """
         try:
-            # Convert the analysis to a dictionary
-            analysis_dict = analysis.to_dict()
+            # Create a message with the comment data and analysis result
+            message = {
+                "id": comment_data.get('id'),
+                "content": comment_data.get('content'),
+                "author": comment_data.get('author'),
+                "timestamp": comment_data.get('timestamp'),
+                "article_id": comment_data.get('article_id'),
+                "analysis": analysis_result
+            }
             
             # Publish to Kafka
-            self.kafka_producer.send_message(FLAGGED_COMMENTS_TOPIC, analysis_dict)
+            self.kafka_producer.send_message(message)
             
-            logger.info(f"Published analysis for comment ID {analysis.comment_id} to Kafka")
+            logger.info(f"Published flagged comment ID {comment_data.get('id')} to Kafka")
             
         except Exception as e:
-            logger.error(f"Error publishing analysis to Kafka: {e}")
+            logger.error(f"Error publishing flagged comment to Kafka: {e}")

@@ -7,24 +7,22 @@ and process them using the osint_comments analysis pipeline.
 import logging
 import sys
 import os
+import argparse
 from typing import List, Optional, Dict, Any
 import json
 from datetime import datetime
 
-# Add parent directory to path to import crawler
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # Import from crawler package
-from crawler.web_scraper import E24Scraper
-from crawler.crawler_service import CrawlerService
-from crawler.article_repository import ArticleRepository
-from crawler.models import Article as CrawlerArticle
+import crawler.web_scraper
+import crawler.crawler_service
+import crawler.article_repository
+import crawler.models
 
 # Import from osint_comments package
-from osint_comments.kafka_producer import KafkaProducer
-from osint_comments.config import Config
-from osint_comments.models import Comment, Article
-from osint_comments.repository import Repository
+from .kafka_producer import KafkaProducer
+from .config import Config
+from .models import Comment, Article
+from .repository import Repository
 
 # Configure logging
 logging.basicConfig(
@@ -59,16 +57,16 @@ class E24Integration:
         )
         
         # Create crawler components
-        self.article_repository = ArticleRepository(db_path="e24_articles.db")
-        self.scraper = E24Scraper()
-        self.crawler_service = CrawlerService(
+        self.article_repository = crawler.article_repository.ArticleRepository(db_path="e24_articles.db")
+        self.scraper = crawler.web_scraper.E24Scraper()
+        self.crawler_service = crawler.crawler_service.CrawlerService(
             scraper=self.scraper,
             repository=self.article_repository,
             kafka_producer=None,  # We'll handle Kafka publishing ourselves
             cache_dir="./e24_cache"
         )
     
-    def convert_to_osint_article(self, crawler_article: CrawlerArticle) -> Article:
+    def convert_to_osint_article(self, crawler_article: crawler.models.Article) -> Article:
         """
         Convert a crawler Article to an osint_comments Article.
         
@@ -87,7 +85,7 @@ class E24Integration:
             content=crawler_article.content
         )
     
-    def extract_comments(self, crawler_article: CrawlerArticle) -> List[Comment]:
+    def extract_comments(self, crawler_article: crawler.models.Article) -> List[Comment]:
         """
         Extract comments from a crawler Article.
         
@@ -117,7 +115,7 @@ class E24Integration:
         
         return [comment]
     
-    def process_article(self, crawler_article: CrawlerArticle) -> None:
+    def process_article(self, crawler_article: crawler.models.Article) -> None:
         """
         Process an article from the crawler.
         
@@ -172,8 +170,6 @@ class E24Integration:
 
 def main():
     """Main entry point for the integration."""
-    import argparse
-    
     parser = argparse.ArgumentParser(
         description="Integrate e24.no crawler with osint_comments"
     )

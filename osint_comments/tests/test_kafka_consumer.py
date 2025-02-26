@@ -1,152 +1,74 @@
-# test_kafka_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, call, ANY
+from unittest.mock import MagicMock, patch
+import json
+from datetime import datetime
 
-from kafka_consumer import KafkaConsumerClient
-from config import RAW_COMMENTS_TOPIC, KAFKA_BOOTSTRAP_SERVERS
+from ..kafka_consumer import KafkaConsumer
+from ..config import RAW_COMMENTS_TOPIC, KAFKA_BOOTSTRAP_SERVERS
 
 @pytest.fixture
 def mock_kafka_consumer():
-    """Create a mock Kafka consumer."""
-    with patch('kafka_consumer.KafkaConsumer') as mock_consumer_class:
-        mock_consumer = MagicMock()
-        mock_consumer_class.return_value = mock_consumer
-        
-        # Set up mock messages
-        message1 = MagicMock()
-        message1.value = {"id": 1, "message": "Test message 1"}
-        message1.topic = RAW_COMMENTS_TOPIC
-        message1.partition = 0
-        message1.offset = 0
-        
-        message2 = MagicMock()
-        message2.value = {"id": 2, "message": "Test message 2"}
-        message2.topic = RAW_COMMENTS_TOPIC
-        message2.partition = 0
-        message2.offset = 1
-        
-        # Set up the mock consumer to return the messages
-        mock_consumer.__iter__.return_value = iter([message1, message2])
-        
-        yield mock_consumer
+    with patch('kafka.KafkaConsumer') as mock:
+        yield mock
 
-def test_kafka_consumer_initialization():
-    """Test initializing the KafkaConsumerClient."""
-    with patch('kafka_consumer.KafkaConsumer') as mock_consumer_class:
-        # Reset the singleton instance for testing
-        KafkaConsumerClient._instance = None
-        
-        # Test with default parameters
-        client = KafkaConsumerClient()
-        mock_consumer_class.assert_called_once_with(
-            RAW_COMMENTS_TOPIC,
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            value_deserializer=ANY,
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            group_id="comment-analyzer-group"
-        )
-        
-        # Reset the mock and singleton instance for the second test
-        mock_consumer_class.reset_mock()
-        KafkaConsumerClient._instance = None
-        
-        # Test with custom parameters
-        custom_servers = ["custom-server:9092"]
-        custom_topics = ["custom-topic"]
-        client = KafkaConsumerClient(
-            bootstrap_servers=custom_servers,
-            topics=custom_topics
-        )
-        mock_consumer_class.assert_called_once_with(
-            "custom-topic",
-            bootstrap_servers=custom_servers,
-            value_deserializer=ANY,
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            group_id="comment-analyzer-group"
-        )
+@pytest.fixture
+def consumer(mock_kafka_consumer):
+    consumer = KafkaConsumer(
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        topic=RAW_COMMENTS_TOPIC,
+        group_id="test-group"
+    )
+    return consumer
 
-def test_consume_messages(mock_kafka_consumer):
-    """Test consuming messages from Kafka."""
-    # Create a mock process_message function
-    process_message = MagicMock()
-    
-    # Create the client
-    client = KafkaConsumerClient()
-    
-    # Replace the consumer with our mock
-    client.consumer = mock_kafka_consumer
-    
-    # Consume messages
-    client.consume_messages(process_message)
-    
-    # Check that process_message was called for each message
-    assert process_message.call_count == 2
-    process_message.assert_has_calls([
-        call({"id": 1, "message": "Test message 1"}),
-        call({"id": 2, "message": "Test message 2"})
-    ])
+def test_kafka_consumer_init(consumer, mock_kafka_consumer):
+    # Check that the Kafka consumer was initialized with the correct parameters
+    mock_kafka_consumer.assert_called_once_with(
+        RAW_COMMENTS_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id="test-group",
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
+        value_deserializer=consumer._deserialize
+    )
 
-def test_consume_messages_with_max(mock_kafka_consumer):
-    """Test consuming a limited number of messages."""
-    # Create a mock process_message function
-    process_message = MagicMock()
+def test_deserialize(consumer):
+    # Create a sample message
+    message = {
+        "id": "123",
+        "content": "This is a test comment",
+        "author": "Test User",
+        "timestamp": datetime.now().isoformat(),
+        "article_id": "456"
+    }
     
-    # Create the client
-    client = KafkaConsumerClient()
+    # Serialize the message
+    serialized = json.dumps(message).encode('utf-8')
     
-    # Replace the consumer with our mock
-    client.consumer = mock_kafka_consumer
+    # Deserialize the message
+    deserialized = consumer._deserialize(serialized)
     
-    # Consume messages with a limit
-    client.consume_messages(process_message, max_messages=1)
-    
-    # Check that process_message was called only once
-    process_message.assert_called_once_with({"id": 1, "message": "Test message 1"})
+    # Check that the deserialized message is correct
+    assert deserialized["id"] == message["id"]
+    assert deserialized["content"] == message["content"]
+    assert deserialized["author"] == message["author"]
+    assert deserialized["article_id"] == message["article_id"]
 
-def test_consume_messages_error_handling(mock_kafka_consumer):
-    """Test error handling during message consumption."""
-    # Create a process_message function that raises an exception
-    def process_message(message):
-        if message["id"] == 1:
-            raise Exception("Test error")
+def test_process_message(consumer):
+    # Create a sample message
+    message = {
+        "id": "123",
+        "content": "This is a test comment",
+        "author": "Test User",
+        "timestamp": datetime.now().isoformat(),
+        "article_id": "456"
+    }
     
-    # Create a mock process_message function
-    mock_process = MagicMock(side_effect=process_message)
+    # Set up a mock message processor
+    mock_processor = MagicMock()
+    consumer.message_processor = mock_processor
     
-    # Create the client
-    client = KafkaConsumerClient()
+    # Process the message
+    consumer._process_message(message)
     
-    # Replace the consumer with our mock
-    client.consumer = mock_kafka_consumer
-    
-    # Consume messages
-    client.consume_messages(mock_process)
-    
-    # Check that process_message was called for each message
-    assert mock_process.call_count == 2
-    
-    # The second message should still be processed despite the error in the first
-    mock_process.assert_has_calls([
-        call({"id": 1, "message": "Test message 1"}),
-        call({"id": 2, "message": "Test message 2"})
-    ])
-
-def test_close():
-    """Test closing the Kafka consumer."""
-    with patch('kafka_consumer.KafkaConsumer') as mock_consumer_class:
-        # Reset the singleton instance for testing
-        KafkaConsumerClient._instance = None
-        
-        mock_consumer = MagicMock()
-        mock_consumer_class.return_value = mock_consumer
-        
-        # Create the client
-        client = KafkaConsumerClient()
-        
-        # Close the consumer
-        client.close()
-        
-        # Check that the consumer was closed
-        mock_consumer.close.assert_called_once()
+    # Check that the message processor was called with the correct arguments
+    mock_processor.assert_called_once_with(message)

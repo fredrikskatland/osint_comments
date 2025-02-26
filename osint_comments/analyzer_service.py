@@ -7,11 +7,11 @@ from typing import Optional
 
 from rich.logging import RichHandler
 
-from config import KAFKA_BOOTSTRAP_SERVERS, RAW_COMMENTS_TOPIC, ANALYSIS_THRESHOLD
-from kafka_consumer import KafkaConsumerClient
-from kafka_producer import KafkaProducerClient
-from llm_client import OpenAIClient
-from comment_analyzer import CommentAnalyzer
+from .config import KAFKA_BOOTSTRAP_SERVERS, RAW_COMMENTS_TOPIC, ANALYSIS_THRESHOLD
+from .kafka_consumer import KafkaConsumer
+from .kafka_producer import KafkaProducer
+from .llm_client import OpenAIClient
+from .comment_analyzer import CommentAnalyzer
 
 # Set up logging
 logging.basicConfig(
@@ -27,29 +27,34 @@ class AnalyzerService:
     Service for analyzing comments from Kafka and publishing the results.
     """
     
-    def __init__(self, max_messages: Optional[int] = None):
+    def __init__(self, kafka_consumer=None, kafka_producer=None, llm_client=None, comment_analyzer=None, max_messages: Optional[int] = None):
         """
         Initialize the AnalyzerService.
         
         Args:
+            kafka_consumer: Kafka consumer instance (optional)
+            kafka_producer: Kafka producer instance (optional)
+            llm_client: LLM client instance (optional)
+            comment_analyzer: Comment analyzer instance (optional)
             max_messages: Maximum number of messages to process (None for infinite)
         """
         self.running = False
         self.max_messages = max_messages
         
         # Initialize components
-        self.kafka_consumer = KafkaConsumerClient(
+        self.kafka_consumer = kafka_consumer or KafkaConsumer(
             bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            topics=[RAW_COMMENTS_TOPIC]
+            topic=RAW_COMMENTS_TOPIC,
+            group_id="osint-comments-analyzer"
         )
-        self.kafka_producer = KafkaProducerClient(
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS
+        self.kafka_producer = kafka_producer or KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            topic="analyzed-comments"
         )
-        self.openai_client = OpenAIClient()
-        self.comment_analyzer = CommentAnalyzer(
-            openai_client=self.openai_client,
-            kafka_producer=self.kafka_producer,
-            threshold=ANALYSIS_THRESHOLD
+        self.llm_client = llm_client or OpenAIClient()
+        self.comment_analyzer = comment_analyzer or CommentAnalyzer(
+            llm_client=self.llm_client,
+            kafka_producer=self.kafka_producer
         )
         
         # Set up signal handlers
@@ -64,11 +69,11 @@ class AnalyzerService:
         logger.info("Starting AnalyzerService")
         
         try:
+            # Set the message processor for the Kafka consumer
+            self.kafka_consumer.message_processor = self.process_message
+            
             # Start consuming messages
-            self.kafka_consumer.consume_messages(
-                process_message=self._process_message,
-                max_messages=self.max_messages
-            )
+            self.kafka_consumer.run(max_messages=self.max_messages)
         except KeyboardInterrupt:
             logger.info("Service interrupted by user")
         except Exception as e:
@@ -81,19 +86,25 @@ class AnalyzerService:
         if self.running:
             logger.info("Stopping AnalyzerService")
             self.running = False
+            self.kafka_consumer.stop()
             
-    def _process_message(self, message: dict) -> None:
+    def process_message(self, message: dict) -> dict:
         """
         Process a message from Kafka.
         
         Args:
             message: The message to process
+            
+        Returns:
+            The analysis result
         """
         try:
-            # Process the comment
-            self.comment_analyzer.process_comment(message)
+            # Analyze the comment
+            result = self.comment_analyzer.analyze_comment(message)
+            return result
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            return {"error": str(e)}
             
     def _handle_signal(self, signum, frame) -> None:
         """

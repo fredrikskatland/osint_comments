@@ -1,7 +1,7 @@
 # api_client.py
 import random
 import requests
-from config import API_BASE_URL, COMMENTS_ENDPOINT_TEMPLATE, DEFAULT_LIMIT, DEFAULT_OFFSET, DEFAULT_ORDER, DEFAULT_REPLIES
+from .config import API_BASE_URL, COMMENTS_ENDPOINT_TEMPLATE, DEFAULT_LIMIT, DEFAULT_OFFSET, DEFAULT_ORDER, DEFAULT_REPLIES
 
 # A list of example User-Agent strings.
 USER_AGENTS = [

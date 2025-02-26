@@ -1,5 +1,5 @@
 # repository.py
-from models import Article, User, Comment
+from .models import Article, User, Comment
 from datetime import datetime
 
 class Repository:
@@ -22,7 +22,7 @@ class Repository:
             self.session.commit()
         return user
 
-    def add_comment(self, comment_data: dict, article: Article, user: User) -> (Comment, bool):
+    def add_comment(self, comment_data: dict, article: Article, user: User) -> tuple[Comment, bool]:
         # Check if the comment already exists.
         existing = self.session.query(Comment).filter_by(id=comment_data['id']).first()
         if existing:

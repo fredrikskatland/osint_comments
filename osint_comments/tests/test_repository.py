@@ -2,8 +2,8 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, Article, User, Comment
-from repository import Repository
+from ..models import Base, Article, User, Comment
+from ..repository import Repository
 from datetime import datetime
 
 @pytest.fixture

@@ -2,17 +2,12 @@
 Tests for the e24.no integration with osint_comments.
 """
 import pytest
-import os
-import sys
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-# Add parent directory to path to import osint_comments
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-from osint_comments.e24_integration import E24Integration
+from ..e24_integration import E24Integration
 from crawler.models import Article as CrawlerArticle
-from osint_comments.models import Article, Comment
+from ..models import Article, Comment
 
 
 @pytest.fixture
@@ -96,9 +91,9 @@ def integration(mock_config, mock_repository, mock_kafka_producer,
     with patch("osint_comments.e24_integration.Config", return_value=mock_config), \
          patch("osint_comments.e24_integration.Repository", return_value=mock_repository), \
          patch("osint_comments.e24_integration.KafkaProducer", return_value=mock_kafka_producer), \
-         patch("osint_comments.e24_integration.ArticleRepository", return_value=mock_article_repository), \
-         patch("osint_comments.e24_integration.E24Scraper", return_value=mock_scraper), \
-         patch("osint_comments.e24_integration.CrawlerService", return_value=mock_crawler_service):
+         patch("osint_comments.e24_integration.crawler.article_repository.ArticleRepository", return_value=mock_article_repository), \
+         patch("osint_comments.e24_integration.crawler.web_scraper.E24Scraper", return_value=mock_scraper), \
+         patch("osint_comments.e24_integration.crawler.crawler_service.CrawlerService", return_value=mock_crawler_service):
         
         integration = E24Integration()
         
