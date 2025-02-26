@@ -1,0 +1,7 @@
+# Core dependencies
+requests>=2.25.0
+beautifulsoup4>=4.9.3
+
+# Optional dependencies
+# Uncomment if using Kafka integration
+# kafka-python>=2.0.2

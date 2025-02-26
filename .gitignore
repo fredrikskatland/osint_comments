@@ -1,39 +1,69 @@
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Environment files
+# Environment variables
 .env
 .venv
 env/
 venv/
 ENV/
+env.bak/
+venv.bak/
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-coverage.xml
-*.cover
-
-# Database files
+# Database
 *.db
+*.sqlite
 *.sqlite3
 
-# IDE specific files
+# Logs
+*.log
+logs/
+crawler_integration.log
+
+# Cache
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pytest_cache/
+coverage.xml
+*.cover
+.coverage.*
+
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
-# OS specific files
+# OS specific
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
