@@ -9,6 +9,7 @@ A web crawler for e24.no that identifies articles with comments, following clean
 - Stores article data in a SQLite database
 - Caches crawled URLs to avoid redundant processing
 - Command-line interface for easy usage
+- Integration with Kafka for publishing articles with comments
 
 ## Architecture
 
@@ -27,14 +28,19 @@ The crawler follows clean architecture principles with separation of concerns:
 4. **Interface Layer**
    - `cli.py`: Command-line interface for running the crawler
    - `__main__.py`: Entry point for running as a module
+   - `integration.py`: Integration with the osint_comments project
 
 ## Installation
 
-1. Make sure you have Python 3.7+ installed
-2. Install the required dependencies:
+The E24 Crawler is part of the OSINT Comments project and uses Poetry for dependency management. To install:
+
+1. Make sure you have Poetry installed
+2. Clone the repository and install dependencies:
 
 ```bash
-pip install requests beautifulsoup4
+git clone https://github.com/yourusername/osint_comments.git
+cd osint_comments
+poetry install
 ```
 
 ## Usage
@@ -44,6 +50,9 @@ pip install requests beautifulsoup4
 Run the crawler from the command line:
 
 ```bash
+# Activate the Poetry environment
+poetry shell
+
 # Run with default settings (crawl 3 pages)
 python -m crawler
 
@@ -95,9 +104,9 @@ for article in articles_with_comments:
     print("-" * 50)
 ```
 
-## Integration with Kafka
+## Integration with OSINT Comments
 
-The crawler can be integrated with Kafka to publish articles with comments to a topic. To use this feature, you need to provide a Kafka producer when creating the `CrawlerService`:
+The crawler can be integrated with the OSINT Comments project to analyze comments from e24.no:
 
 ```python
 from crawler.crawler_service import CrawlerService
@@ -114,6 +123,20 @@ crawler_service = CrawlerService(
 
 # Run crawler (articles with comments will be published to Kafka)
 crawler_service.run_crawler(pages=3)
+```
+
+For a complete integration example, see the `osint_comments.e24_integration` module.
+
+## Testing
+
+Run the tests with pytest:
+
+```bash
+# Run all crawler tests
+poetry run pytest crawler/
+
+# Run a specific test file
+poetry run pytest crawler/test_crawler.py
 ```
 
 ## Customization

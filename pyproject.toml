@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "scraping comments of e24"
 authors = ["Fredrik Skatland"]
 readme = "README.md"
+packages = [
+    { include = "osint_comments" },
+    { include = "crawler" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -14,8 +18,12 @@ pytest = "^8.3.4"
 kafka-python = "^2.0.4"
 openai = "^1.12.0"
 pydantic = "^2.6.1"
-
+beautifulsoup4 = "^4.12.3"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+crawler = "crawler.__main__:main"
+osint-comments = "osint_comments.main:main"
