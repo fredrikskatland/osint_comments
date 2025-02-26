@@ -20,7 +20,7 @@ import crawler.models
 
 # Import from osint_comments package
 from .kafka_producer import KafkaProducer
-from .config import Config
+from . import config
 from .models import Comment, Article
 from .repository import Repository
 
@@ -37,22 +37,34 @@ class E24Integration:
     Integration class for the e24.no crawler with the osint_comments project.
     """
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, db_path: str = "osint_comments.db", kafka_bootstrap_servers: str = "localhost:9092"):
         """
         Initialize the integration.
         
         Args:
-            config_path: Path to the configuration file (optional)
+            db_path: Path to the SQLite database file
+            kafka_bootstrap_servers: Kafka bootstrap servers
         """
-        # Load configuration
-        self.config = Config(config_path)
+        # Create repository
+        self.db_path = db_path
+        self.kafka_bootstrap_servers = kafka_bootstrap_servers
+        
+        # Set up SQLAlchemy engine and session
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from .models import Base
+        
+        engine = create_engine(f"sqlite:///{db_path}")
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        session = Session()
         
         # Create repository
-        self.repository = Repository(self.config.db_path)
+        self.repository = Repository(session)
         
         # Create Kafka producer
         self.kafka_producer = KafkaProducer(
-            bootstrap_servers=self.config.kafka_bootstrap_servers,
+            bootstrap_servers=kafka_bootstrap_servers,
             topic="raw-comments"
         )
         
@@ -189,16 +201,26 @@ def main():
     )
     
     parser.add_argument(
-        "--config", 
+        "--db-path", 
         type=str, 
-        default=None, 
-        help="Path to configuration file"
+        default="osint_comments.db", 
+        help="Path to SQLite database file (default: osint_comments.db)"
+    )
+    
+    parser.add_argument(
+        "--kafka-servers", 
+        type=str, 
+        default="localhost:9092", 
+        help="Kafka bootstrap servers (default: localhost:9092)"
     )
     
     args = parser.parse_args()
     
     # Create integration
-    integration = E24Integration(config_path=args.config)
+    integration = E24Integration(
+        db_path=args.db_path,
+        kafka_bootstrap_servers=args.kafka_servers
+    )
     
     # Run integration
     integration.run(pages=args.pages, max_articles=args.max_articles)
