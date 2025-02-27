@@ -111,38 +111,28 @@ class E24Integration:
             cache_dir="./e24_cache"
         )
     
-    def crawl_articles(self, pages: int = 3, process_content: bool = False, 
-                       crawl_method: str = "standard", related_articles: int = 3, 
-                       depth: int = 2) -> List[Article]:
+    def crawl_articles(self, process_content: bool = False, 
+                       months_back: int = 1, max_articles: Optional[int] = None) -> List[Article]:
         """
         Crawl articles from e24.no and save them to the database.
         In the new approach, we don't check for comments in the crawler.
         
         Args:
-            pages: Number of pages to crawl
             process_content: Whether to process article content
-            crawl_method: Crawling method to use ("standard" or "depth")
-            related_articles: Number of related articles to follow from each article (for depth crawling)
-            depth: Maximum depth to crawl (for depth crawling)
+            months_back: Number of months to go back from the current month
+            max_articles: Maximum number of articles to process (None for all)
             
         Returns:
             List of processed articles
         """
-        # Determine crawl method
-        if crawl_method == "depth":
-            console.print(f"[bold green]Crawling articles from e24.no with depth crawling[/bold green]")
-            console.print(f"[bold]Front pages: {pages}, Related articles: {related_articles}, Depth: {depth}[/bold]")
-            
-            # Use depth crawling
-            crawler_articles = self.crawler_service.crawl_with_depth(
-                pages=pages,
-                max_related=related_articles,
-                depth=depth
-            )
-        else:
-            # Use regular crawling
-            console.print(f"[bold green]Crawling articles from e24.no (pages: {pages})[/bold green]")
-            crawler_articles = self.crawler_service.crawl_recent_articles(pages=pages)
+        console.print(f"[bold green]Crawling articles from e24.no using sitemap[/bold green]")
+        console.print(f"[bold]Months back: {months_back}, Max articles: {max_articles or 'All'}[/bold]")
+        
+        # Use sitemap crawling
+        crawler_articles = self.crawler_service.crawl_articles(
+            months_back=months_back,
+            max_articles=max_articles
+        )
         
         console.print(f"[bold]Found {len(crawler_articles)} articles[/bold]")
         
@@ -383,18 +373,15 @@ class E24Integration:
         
         console.print(table)
     
-    def run_full_pipeline(self, pages: int = 3, crawl_method: str = "standard", 
-                          related_articles: int = 3, depth: int = 2, 
+    def run_full_pipeline(self, months_back: int = 1, max_articles: Optional[int] = None, 
                           limit: Optional[int] = None, publish_to_kafka: bool = False) -> None:
         """
         Run the full pipeline: crawl, gather comments, and analyze.
         
         Args:
-            pages: Number of pages to crawl
-            crawl_method: Crawling method to use ("standard" or "depth")
-            related_articles: Number of related articles to follow from each article (for depth crawling)
-            depth: Maximum depth to crawl (for depth crawling)
-            limit: Maximum number of articles/comments to process
+            months_back: Number of months to go back from the current month
+            max_articles: Maximum number of articles to process (None for all)
+            limit: Maximum number of articles/comments to process for gather and analyze steps
             publish_to_kafka: Whether to publish to Kafka
         """
         console.print("[bold green]Running full pipeline[/bold green]")
@@ -402,11 +389,9 @@ class E24Integration:
         # Step 1: Crawl articles
         console.print("\n[bold]Step 1: Crawling articles[/bold]")
         processed_articles = self.crawl_articles(
-            pages=pages, 
             process_content=True,
-            crawl_method=crawl_method,
-            related_articles=related_articles,
-            depth=depth
+            months_back=months_back,
+            max_articles=max_articles
         )
         
         # Step 2: Gather comments
@@ -464,35 +449,21 @@ def main():
     # Crawl command
     crawl_parser = subparsers.add_parser("crawl", help="Crawl articles from e24.no")
     crawl_parser.add_argument(
-        "--pages", 
-        type=int, 
-        default=3, 
-        help="Number of pages to crawl (default: 3)"
-    )
-    crawl_parser.add_argument(
         "--process-content", 
         action="store_true", 
         help="Process article content"
     )
-    
-    # Add crawl method options
     crawl_parser.add_argument(
-        "--crawl-method", 
-        choices=["standard", "depth"], 
-        default="standard",
-        help="Crawling method to use (standard or depth)"
+        "--months-back", 
+        type=int, 
+        default=1,
+        help="Number of months to go back from the current month"
     )
     crawl_parser.add_argument(
-        "--related-articles", 
+        "--max-articles", 
         type=int, 
-        default=3,
-        help="Number of related articles to follow from each article (for depth crawling)"
-    )
-    crawl_parser.add_argument(
-        "--depth", 
-        type=int, 
-        default=2,
-        help="Maximum depth to crawl (for depth crawling)"
+        default=None,
+        help="Maximum number of articles to process (None for all)"
     )
     
     # Gather command
@@ -526,36 +497,22 @@ def main():
     # Full pipeline command
     pipeline_parser = subparsers.add_parser("pipeline", help="Run the full pipeline")
     pipeline_parser.add_argument(
-        "--pages", 
-        type=int, 
-        default=3, 
-        help="Number of pages to crawl (default: 3)"
-    )
-    pipeline_parser.add_argument(
         "--limit", 
         type=int, 
         default=None, 
-        help="Maximum number of articles/comments to process"
-    )
-    
-    # Add crawl method options to pipeline command
-    pipeline_parser.add_argument(
-        "--crawl-method", 
-        choices=["standard", "depth"], 
-        default="standard",
-        help="Crawling method to use (standard or depth)"
+        help="Maximum number of articles/comments to process for gather and analyze steps"
     )
     pipeline_parser.add_argument(
-        "--related-articles", 
+        "--months-back", 
         type=int, 
-        default=3,
-        help="Number of related articles to follow from each article (for depth crawling)"
+        default=1,
+        help="Number of months to go back from the current month"
     )
     pipeline_parser.add_argument(
-        "--depth", 
+        "--max-articles", 
         type=int, 
-        default=2,
-        help="Maximum depth to crawl (for depth crawling)"
+        default=None,
+        help="Maximum number of articles to process (None for all)"
     )
     
     # Stats command
@@ -577,11 +534,9 @@ def main():
     # Run the appropriate command
     if args.command == "crawl":
         integration.crawl_articles(
-            pages=args.pages, 
             process_content=args.process_content,
-            crawl_method=args.crawl_method,
-            related_articles=args.related_articles,
-            depth=args.depth
+            months_back=args.months_back,
+            max_articles=args.max_articles
         )
     elif args.command == "gather":
         integration.gather_comments(
@@ -597,10 +552,8 @@ def main():
         )
     elif args.command == "pipeline":
         integration.run_full_pipeline(
-            pages=args.pages,
-            crawl_method=args.crawl_method,
-            related_articles=args.related_articles,
-            depth=args.depth,
+            months_back=args.months_back,
+            max_articles=args.max_articles,
             limit=args.limit,
             publish_to_kafka=args.publish_to_kafka
         )

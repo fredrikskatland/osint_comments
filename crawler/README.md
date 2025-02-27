@@ -1,11 +1,11 @@
 # E24 Crawler
 
-A web crawler for e24.no that identifies articles, following clean architecture principles with separation of concerns.
+A web crawler for e24.no that identifies articles using the sitemap structure, following clean architecture principles with separation of concerns.
 
 ## Features
 
-- Crawls e24.no to find articles
-- Supports depth crawling to follow related articles
+- Crawls e24.no sitemaps to find articles
+- Supports crawling articles from multiple months
 - Stores article data in a SQLite database
 - Caches crawled URLs to avoid redundant processing
 - Command-line interface for easy usage
@@ -53,14 +53,14 @@ Run the crawler from the command line:
 # Activate the Poetry environment
 poetry shell
 
-# Run with default settings (crawl 3 pages)
+# Run with default settings (crawl current month)
 python -m crawler
 
-# Crawl more pages
-python -m crawler --pages 5
+# Crawl articles from the last 3 months
+python -m crawler --months-back 3
 
 # Limit the number of articles to process
-python -m crawler --max-articles 10
+python -m crawler --max-articles 50
 
 # Force recrawling of articles that have been crawled before
 python -m crawler --force-recrawl
@@ -72,19 +72,19 @@ python -m crawler --list-recent
 python -m crawler --verbose
 ```
 
-### Depth Crawling
+### Sitemap-based Crawling
 
-The crawler supports depth crawling, which follows related articles from each article:
+The crawler uses the sitemap structure of e24.no to find articles:
 
 ```bash
-# Run with depth crawling
-python -m crawler --crawl-method depth --related-articles 3 --depth 2
+# Crawl articles from the last 3 months
+python -m crawler --months-back 3
 ```
 
 This will:
-1. Crawl the front page to find initial articles
-2. For each article, follow up to 3 related articles
-3. Continue this process up to a depth of 2
+1. Find the sitemaps for the current month and the previous 2 months
+2. Extract article URLs from each sitemap
+3. Process each article to get its details
 
 ### API Usage
 
@@ -104,12 +104,12 @@ crawler_service = CrawlerService(
     cache_dir="./cache"
 )
 
-# Run standard crawler
-articles = crawler_service.crawl_recent_articles(pages=3)
+# Crawl articles from the current month
+articles = crawler_service.crawl_articles(months_back=1)
 processed_articles = crawler_service.process_articles(articles)
 
-# Run depth crawler
-articles = crawler_service.crawl_with_depth(pages=1, max_related=3, depth=2)
+# Crawl articles from the last 3 months with a limit
+articles = crawler_service.crawl_articles(months_back=3, max_articles=50)
 processed_articles = crawler_service.process_articles(articles)
 
 # Print results

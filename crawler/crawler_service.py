@@ -73,54 +73,23 @@ class CrawlerService:
         except Exception as e:
             logger.error(f"Error saving crawled URLs cache: {e}")
     
-    def crawl_recent_articles(self, pages: int = 5, force_recrawl: bool = False) -> List[Article]:
+    def crawl_articles(self, months_back: int = 1, max_articles: Optional[int] = None, 
+                      force_recrawl: bool = False) -> List[Article]:
         """
-        Crawl recent articles from e24.no.
+        Crawl articles from e24.no using the sitemap structure.
         
         Args:
-            pages: Number of pages to crawl
+            months_back: Number of months to go back from the current month
+            max_articles: Maximum number of articles to process (None for all)
             force_recrawl: Whether to recrawl articles that have been crawled before
             
         Returns:
             List of Article objects
         """
-        logger.info(f"Starting crawl of {pages} pages from e24.no")
-        all_articles = []
+        logger.info(f"Starting article crawl with months_back={months_back}, max_articles={max_articles}")
         
-        for page in range(1, pages + 1):
-            articles = self.scraper.get_article_list(page)
-            all_articles.extend(articles)
-            
-            # Avoid overloading the server
-            if page < pages:
-                import time
-                time.sleep(2)  # 2-second delay between page requests
-        
-        logger.info(f"Found {len(all_articles)} articles across {pages} pages")
-        return all_articles
-    
-    def crawl_with_depth(self, pages: int = 1, max_related: int = 3, depth: int = 2, 
-                         force_recrawl: bool = False) -> List[Article]:
-        """
-        Crawl articles from e24.no with depth, following related articles.
-        
-        Args:
-            pages: Number of front pages to crawl for initial articles
-            max_related: Maximum number of related articles to follow from each article
-            depth: Maximum depth to crawl (1 = only start_urls, 2 = start_urls + related, etc.)
-            force_recrawl: Whether to recrawl articles that have been crawled before
-            
-        Returns:
-            List of Article objects
-        """
-        logger.info(f"Starting depth crawl with pages={pages}, max_related={max_related}, depth={depth}")
-        
-        # First, get articles from the front page(s)
-        start_articles = self.crawl_recent_articles(pages=pages, force_recrawl=force_recrawl)
-        start_urls = [article.url for article in start_articles]
-        
-        # Then, crawl with depth
-        all_articles = self.scraper.crawl_with_depth(start_urls, max_related=max_related, depth=depth)
+        # Get articles from the sitemap
+        all_articles = self.scraper.crawl_articles(months_back=months_back, max_articles=max_articles)
         
         # Update crawled URLs cache
         now = datetime.now()
@@ -238,33 +207,16 @@ class CrawlerService:
         logger.info(f"Processed {len(processed_articles)} articles")
         return processed_articles
     
-    def run_crawler(self, pages: int = 5, max_articles: Optional[int] = None) -> List[Article]:
+    def run_crawler(self, months_back: int = 1, max_articles: Optional[int] = None) -> List[Article]:
         """
         Run the complete crawling process.
         
         Args:
-            pages: Number of pages to crawl
+            months_back: Number of months to go back from the current month
             max_articles: Maximum number of articles to process (None for all)
             
         Returns:
             List of processed articles
         """
-        articles = self.crawl_recent_articles(pages)
-        return self.process_articles(articles, max_articles)
-    
-    def run_depth_crawler(self, pages: int = 1, max_related: int = 3, depth: int = 2, 
-                          max_articles: Optional[int] = None) -> List[Article]:
-        """
-        Run the complete depth crawling process.
-        
-        Args:
-            pages: Number of front pages to crawl for initial articles
-            max_related: Maximum number of related articles to follow from each article
-            depth: Maximum depth to crawl (1 = only start_urls, 2 = start_urls + related, etc.)
-            max_articles: Maximum number of articles to process (None for all)
-            
-        Returns:
-            List of processed articles
-        """
-        articles = self.crawl_with_depth(pages=pages, max_related=max_related, depth=depth)
+        articles = self.crawl_articles(months_back=months_back, max_articles=max_articles)
         return self.process_articles(articles, max_articles)

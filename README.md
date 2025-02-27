@@ -102,8 +102,11 @@ poetry run python -m osint_comments.e24_integration stats
 ### Advanced Options
 
 ```bash
-# Crawl with depth (follow related articles)
-poetry run python -m osint_comments.e24_integration crawl --crawl-method depth --related-articles 3 --depth 2
+# Crawl articles from the last 3 months
+poetry run python -m osint_comments.e24_integration crawl --months-back 3
+
+# Crawl with a limit on the number of articles
+poetry run python -m osint_comments.e24_integration crawl --max-articles 50
 
 # Gather comments for a specific article
 poetry run python -m osint_comments.e24_integration gather --article-id article:e24:example-article
@@ -112,7 +115,7 @@ poetry run python -m osint_comments.e24_integration gather --article-id article:
 poetry run python -m osint_comments.e24_integration analyze --publish-to-kafka --kafka-servers localhost:9092
 
 # Run the full pipeline with all options
-poetry run python -m osint_comments.e24_integration pipeline --pages 5 --crawl-method depth --related-articles 3 --depth 2 --publish-to-kafka --kafka-servers localhost:9092
+poetry run python -m osint_comments.e24_integration pipeline --months-back 3 --max-articles 100 --publish-to-kafka --kafka-servers localhost:9092
 ```
 
 ## Testing

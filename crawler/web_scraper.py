@@ -1,24 +1,26 @@
 """
-Web scraper for e24.no to extract articles and check for comments.
+Web scraper for e24.no to extract articles using the sitemap structure.
 """
 import requests
 from bs4 import BeautifulSoup
-from typing import List, Optional, Tuple, Set
+import xml.etree.ElementTree as ET
+from typing import List, Optional
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 from .models import Article
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
 class E24Scraper:
     """
-    Scraper for e24.no to extract articles and check for comments.
+    Scraper for e24.no to extract articles using the sitemap structure.
     """
     BASE_URL = "https://e24.no"
+    SITEMAP_URL_TEMPLATE = "https://e24.no/sitemaps/{year}-{month:02d}-articles.xml"
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9,nb;q=0.8",
@@ -27,103 +29,103 @@ class E24Scraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
-        self.visited_urls = set()  # Keep track of visited URLs to avoid duplicates
     
-    def get_article_list(self, page: int = 1) -> List[Article]:
+    def get_articles_from_sitemap(self, year: Optional[int] = None, month: Optional[int] = None) -> List[Article]:
         """
-        Fetch a list of articles from the main page or category pages.
-        Only includes articles with URLs matching the pattern https://e24.no/i/{article_id}
+        Fetch articles from the sitemap for a specific year and month.
+        If year and month are not provided, the current year and month are used.
         
         Args:
-            page: Page number to fetch (for pagination)
+            year: Year to fetch articles for (default: current year)
+            month: Month to fetch articles for (default: current month)
             
         Returns:
             List of Article objects with basic information
         """
-        url = f"{self.BASE_URL}"
-        if page > 1:
-            url = f"{url}/page/{page}"
+        # Use current year and month if not provided
+        if year is None or month is None:
+            now = datetime.now()
+            year = year or now.year
+            month = month or now.month
         
-        logger.info(f"Fetching article list from {url}")
+        sitemap_url = self.SITEMAP_URL_TEMPLATE.format(year=year, month=month)
+        logger.info(f"Fetching articles from sitemap: {sitemap_url}")
         
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(sitemap_url, timeout=10)
             response.raise_for_status()
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Parse the XML sitemap
+            root = ET.fromstring(response.content)
+            
+            # Extract namespace if present
+            ns = {'ns': root.tag.split('}')[0].strip('{')} if '}' in root.tag else {}
+            url_tag = 'ns:url' if ns else 'url'
+            loc_tag = 'ns:loc' if ns else 'loc'
+            
             articles = []
             
-            # Based on the observed structure of e24.no
-            # The articles appear to be in a grid layout with timestamps and titles
-            
-            # First, try to handle cookie consent if present
-            cookie_button = soup.select_one('button:contains("Godta alle"), button:contains("Accept all")')
-            if cookie_button:
-                logger.info("Cookie consent dialog detected. In a real scenario, we would need to handle this.")
-            
-            # Find all links on the page
-            all_links = soup.select('a[href]')
-            logger.info(f"Found {len(all_links)} links on page {page}")
-            
-            # Process each link to find article URLs matching our pattern
-            articles = []
-            article_pattern = re.compile(r'^https?://e24\.no/i/[a-zA-Z0-9]+$')
-            
-            for link in all_links:
-                try:
-                    # Get the URL
-                    article_url = link.get('href')
-                    if not article_url:
-                        continue
+            # Extract article URLs from the sitemap
+            for url_elem in root.findall(url_tag, ns):
+                loc_elem = url_elem.find(loc_tag, ns)
+                if loc_elem is not None:
+                    article_url = loc_elem.text
                     
-                    # Make sure it's an absolute URL
-                    if not article_url.startswith('http'):
-                        article_url = f"{self.BASE_URL}{article_url}"
-                    
-                    # Check if the URL matches our pattern for E24 articles
-                    if not article_pattern.match(article_url):
-                        # Try with trailing slash
-                        if not article_pattern.match(article_url.rstrip('/')):
-                            continue
-                    
-                    # Extract title
-                    # First try to find a heading element
-                    title_elem = link.select_one('h1, h2, h3, h4')
-                    
-                    # If no heading, try to use the link text
-                    if not title_elem:
-                        title = link.text.strip()
-                    else:
-                        title = title_elem.text.strip()
-                    
-                    # Skip if no title
-                    if not title:
-                        continue
-                    
-                    # Create Article object with basic information
-                    article = Article(
-                        url=article_url,
-                        title=title
-                    )
-                    
-                    # Only add if not already in the list (avoid duplicates)
-                    if not any(a.url == article_url for a in articles):
+                    # Extract article identifier from URL
+                    article_id_match = re.search(r'/i/([a-zA-Z0-9]+)/?', article_url)
+                    if article_id_match:
+                        article_id = article_id_match.group(1)
+                        
+                        # Create Article object with basic information
+                        article = Article(
+                            url=article_url,
+                            title="",  # Title will be filled in when getting article details
+                            identifier=article_id
+                        )
                         articles.append(article)
-                    
-                except Exception as e:
-                    logger.error(f"Error extracting article data: {e}")
-                    continue
             
-            logger.info(f"Found {len(articles)} articles on page {page}")
+            logger.info(f"Found {len(articles)} articles in sitemap for {year}-{month:02d}")
             return articles
             
         except requests.RequestException as e:
-            logger.error(f"Error fetching article list: {e}")
+            logger.error(f"Error fetching sitemap: {e}")
             return []
+        except ET.ParseError as e:
+            logger.error(f"Error parsing sitemap XML: {e}")
+            return []
+    
+    def get_articles_from_recent_sitemaps(self, months_back: int = 1) -> List[Article]:
+        """
+        Fetch articles from the sitemaps for recent months.
+        
+        Args:
+            months_back: Number of months to go back from the current month
+            
+        Returns:
+            List of Article objects with basic information
+        """
+        now = datetime.now()
+        all_articles = []
+        
+        # Get articles for the current month and previous months
+        for i in range(months_back):
+            date = now - timedelta(days=30 * i)
+            year = date.year
+            month = date.month
+            
+            articles = self.get_articles_from_sitemap(year, month)
+            all_articles.extend(articles)
+            
+            # Avoid overloading the server
+            if i < months_back - 1:
+                import time
+                time.sleep(1)  # 1-second delay between requests
+        
+        return all_articles
     
     def get_article_details(self, article_url: str) -> Article:
         """
-        Fetch the full details of an article including checking for comments.
+        Fetch the full details of an article.
         
         Args:
             article_url: URL of the article to fetch
@@ -229,8 +231,11 @@ class E24Scraper:
                     
                     content = main_content.text.strip()
             
-            # Check for comments
-            has_comments, comment_count = self.check_for_comments(soup)
+            # Extract article identifier from URL
+            article_id = None
+            article_id_match = re.search(r'/i/([a-zA-Z0-9]+)/?', article_url)
+            if article_id_match:
+                article_id = article_id_match.group(1)
             
             # Create and return Article object
             article = Article(
@@ -239,8 +244,9 @@ class E24Scraper:
                 published_date=published_date,
                 author=author,
                 content=content,
-                has_comments=has_comments,
-                comment_count=comment_count
+                has_comments=False,  # Comments are checked in the gather step using the API
+                comment_count=0,     # Comments are checked in the gather step using the API
+                identifier=article_id
             )
             
             return article
@@ -249,204 +255,53 @@ class E24Scraper:
             logger.error(f"Error fetching article details: {e}")
             return Article(url=article_url, title="Error fetching article")
     
-    def check_for_comments(self, soup: BeautifulSoup) -> Tuple[bool, Optional[int]]:
+    def process_articles(self, articles: List[Article], max_articles: Optional[int] = None) -> List[Article]:
         """
-        This method is deprecated and will always return (False, None).
-        The comment checking is now done in the gather step using the API.
+        Process a list of articles to get their full details.
         
         Args:
-            soup: BeautifulSoup object of the article page
+            articles: List of articles to process
+            max_articles: Maximum number of articles to process (None for all)
             
         Returns:
-            Tuple of (has_comments, comment_count)
+            List of processed articles with full details
         """
-        # In the new approach, we don't check for comments in the crawler
-        # This is now done in the gather step using the API
-        return False, None
-    
-    def get_related_articles(self, article_url: str, max_related: int = 3) -> List[Article]:
-        """
-        Find related articles from an article page.
-        Only includes articles with URLs matching the pattern https://e24.no/i/{article_id}
+        processed_articles = []
         
-        Args:
-            article_url: URL of the article to find related articles from
-            max_related: Maximum number of related articles to return
-            
-        Returns:
-            List of Article objects for related articles
-        """
-        logger.info(f"Finding related articles from {article_url}")
+        # Limit the number of articles if specified
+        if max_articles is not None:
+            articles = articles[:max_articles]
         
-        try:
-            response = self.session.get(article_url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            related_articles = []
-            
-            # Look for related articles sections
-            related_selectors = [
-                '.related-articles', 
-                '.article-recommendations', 
-                '.recommended-articles',
-                '.more-articles',
-                '.read-more',
-                '.similar-articles',
-                '[class*="related"]',
-                '[class*="recommendation"]',
-                'aside',
-                '.sidebar'
-            ]
-            
-            related_sections = []
-            for selector in related_selectors:
-                sections = soup.select(selector)
-                if sections:
-                    related_sections.extend(sections)
-            
-            # If no specific related sections found, look for links in the article
-            if not related_sections:
-                article_content = soup.select_one('article, .article, .article-content, main')
-                if article_content:
-                    related_sections = [article_content]
-            
-            # Define the article pattern
-            article_pattern = re.compile(r'^https?://e24\.no/i/[a-zA-Z0-9]+$')
-            
-            # Extract links from related sections
-            for section in related_sections:
-                links = section.select('a[href]')
-                for link in links:
-                    try:
-                        # Get the URL
-                        related_url = link.get('href')
-                        if not related_url:
-                            continue
-                        
-                        # Make sure it's an absolute URL
-                        if not related_url.startswith('http'):
-                            related_url = f"{self.BASE_URL}{related_url}"
-                        
-                        # Check if the URL matches our pattern for E24 articles
-                        if not article_pattern.match(related_url):
-                            # Try with trailing slash
-                            if not article_pattern.match(related_url.rstrip('/')):
-                                continue
-                        
-                        # Skip if already in the list
-                        if any(article.url == related_url for article in related_articles):
-                            continue
-                        
-                        # Extract title
-                        title_elem = link.select_one('h1, h2, h3, h4')
-                        if title_elem:
-                            title = title_elem.text.strip()
-                        else:
-                            title = link.text.strip()
-                        
-                        # Skip if no title
-                        if not title:
-                            continue
-                        
-                        # Create Article object with basic information
-                        article = Article(
-                            url=related_url,
-                            title=title
-                        )
-                        related_articles.append(article)
-                        
-                        # Stop if we have enough related articles
-                        if len(related_articles) >= max_related:
-                            break
-                    
-                    except Exception as e:
-                        logger.error(f"Error extracting related article data: {e}")
-                        continue
-                
-                # Stop if we have enough related articles
-                if len(related_articles) >= max_related:
-                    break
-            
-            logger.info(f"Found {len(related_articles)} related articles from {article_url}")
-            return related_articles
-            
-        except requests.RequestException as e:
-            logger.error(f"Error fetching related articles: {e}")
-            return []
-    
-    def crawl_with_depth(self, start_urls: List[str], max_related: int = 3, depth: int = 2) -> List[Article]:
-        """
-        Crawl articles starting from a list of URLs, following related articles up to a certain depth.
+        logger.info(f"Processing {len(articles)} articles")
         
-        Args:
-            start_urls: List of URLs to start crawling from
-            max_related: Maximum number of related articles to follow from each article
-            depth: Maximum depth to crawl (1 = only start_urls, 2 = start_urls + related, etc.)
+        for i, article in enumerate(articles):
+            logger.info(f"Processing article {i+1}/{len(articles)}: {article.url}")
             
-        Returns:
-            List of Article objects
-        """
-        logger.info(f"Starting depth crawl with {len(start_urls)} start URLs, max_related={max_related}, depth={depth}")
-        
-        all_articles = []
-        # Store (url, current_depth, parent_url) in the queue
-        to_visit = [(url, 1, "front_page") for url in start_urls]  # (url, current_depth, parent_url)
-        
-        # Keep track of article relationships
-        article_relationships = {}  # {url: {"depth": depth, "parent": parent_url, "title": title}}
-        
-        while to_visit:
-            url, current_depth, parent_url = to_visit.pop(0)
-            
-            # Skip if already visited
-            if url in self.visited_urls:
-                logger.debug(f"Skipping already visited URL: {url}")
-                continue
-            
-            # Mark as visited
-            self.visited_urls.add(url)
-            
-            # Get article details
-            article = self.get_article_details(url)
-            all_articles.append(article)
-            
-            # Log article details with depth and parent information
-            depth_indicator = "  " * (current_depth - 1) + "└─" if current_depth > 1 else ""
-            logger.info(f"{depth_indicator}Depth {current_depth}: {article.title} (from: {parent_url})")
-            
-            # Store relationship information
-            article_relationships[url] = {
-                "depth": current_depth,
-                "parent": parent_url,
-                "title": article.title
-            }
-            
-            # If we haven't reached max depth, get related articles
-            if current_depth < depth:
-                related_articles = self.get_related_articles(url, max_related)
-                
-                # Log related articles found
-                if related_articles:
-                    logger.info(f"{depth_indicator}  Found {len(related_articles)} related articles for: {article.title}")
-                else:
-                    logger.info(f"{depth_indicator}  No related articles found for: {article.title}")
-                
-                # Add related articles to visit queue
-                for related in related_articles:
-                    if related.url not in self.visited_urls:
-                        to_visit.append((related.url, current_depth + 1, article.title))
-                        logger.debug(f"Added to queue: {related.title} (depth: {current_depth + 1}, parent: {article.title})")
+            # Get full article details
+            full_article = self.get_article_details(article.url)
+            processed_articles.append(full_article)
             
             # Avoid overloading the server
-            import time
-            time.sleep(1)  # 1-second delay between requests
+            if i < len(articles) - 1:
+                import time
+                time.sleep(1)  # 1-second delay between requests
         
-        # Print article relationship summary
-        logger.info("Article Relationship Summary:")
-        for depth_level in range(1, depth + 1):
-            depth_articles = [info for url, info in article_relationships.items() if info["depth"] == depth_level]
-            logger.info(f"Depth {depth_level}: {len(depth_articles)} articles")
+        logger.info(f"Processed {len(processed_articles)} articles")
+        return processed_articles
+    
+    def crawl_articles(self, months_back: int = 1, max_articles: Optional[int] = None) -> List[Article]:
+        """
+        Crawl articles from recent sitemaps and process them.
         
-        logger.info(f"Depth crawl complete, found {len(all_articles)} articles")
-        return all_articles
+        Args:
+            months_back: Number of months to go back from the current month
+            max_articles: Maximum number of articles to process (None for all)
+            
+        Returns:
+            List of processed articles with full details
+        """
+        # Get articles from recent sitemaps
+        articles = self.get_articles_from_recent_sitemaps(months_back)
+        
+        # Process articles to get full details
+        return self.process_articles(articles, max_articles)
