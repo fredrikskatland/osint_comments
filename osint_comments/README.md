@@ -39,14 +39,14 @@ The OSINT Comments Core follows clean architecture principles:
 
 The OSINT Comments Core implements a three-step pipeline:
 
-1. **Crawl**: Collect articles from e24.no (using the E24 Crawler)
+1. **Crawl**: Collect articles from e24.no using the sitemap structure
 2. **Gather**: Fetch comments for articles using the API
 3. **Analyze**: Analyze comments for harmful content
 
 You can run each step individually or the full pipeline:
 
 ```bash
-# Run the full pipeline
+# Run the full pipeline with default settings
 poetry run python -m osint_comments.e24_integration pipeline
 
 # Run individual steps
@@ -54,25 +54,80 @@ poetry run python -m osint_comments.e24_integration crawl
 poetry run python -m osint_comments.e24_integration gather
 poetry run python -m osint_comments.e24_integration analyze
 
-# Show statistics
+# Show statistics about articles and comments
 poetry run python -m osint_comments.e24_integration stats
 ```
 
-### Advanced Options
+### Step 1: Crawling Articles
+
+The crawler uses the sitemap structure of e24.no to find articles. By default, it crawls the current month's articles.
 
 ```bash
-# Crawl with depth (follow related articles)
-poetry run python -m osint_comments.e24_integration crawl --crawl-method depth --related-articles 3 --depth 2
+# Crawl articles from the current month
+poetry run python -m osint_comments.e24_integration crawl
 
-# Gather comments for a specific article
-poetry run python -m osint_comments.e24_integration gather --article-id article:e24:example-article
+# Crawl articles from the last 3 months
+poetry run python -m osint_comments.e24_integration crawl --months-back 3
 
-# Analyze comments with Kafka integration
-poetry run python -m osint_comments.e24_integration analyze --publish-to-kafka --kafka-servers localhost:9092
+# Limit to 50 articles
+poetry run python -m osint_comments.e24_integration crawl --max-articles 50
 
-# Run the full pipeline with all options
-poetry run python -m osint_comments.e24_integration pipeline --pages 5 --crawl-method depth --related-articles 3 --depth 2 --publish-to-kafka --kafka-servers localhost:9092
+# Process article content (extract full text)
+poetry run python -m osint_comments.e24_integration crawl --process-content
 ```
+
+### Step 2: Gathering Comments
+
+After crawling articles, you can gather comments for them:
+
+```bash
+# Gather comments for all articles that haven't had comments gathered yet
+poetry run python -m osint_comments.e24_integration gather
+
+# Gather comments for a specific article by ID
+poetry run python -m osint_comments.e24_integration gather --article-id QM2mxR
+
+# Limit the number of articles to process
+poetry run python -m osint_comments.e24_integration gather --limit 20
+
+# Publish comments to Kafka as they're gathered
+poetry run python -m osint_comments.e24_integration gather --publish-to-kafka --kafka-servers localhost:9092
+```
+
+### Step 3: Analyzing Comments
+
+Finally, analyze the gathered comments:
+
+```bash
+# Analyze all comments that haven't been analyzed yet
+poetry run python -m osint_comments.e24_integration analyze
+
+# Analyze comments for a specific article
+poetry run python -m osint_comments.e24_integration analyze --article-id QM2mxR
+
+# Limit the number of comments to analyze
+poetry run python -m osint_comments.e24_integration analyze --limit 100
+
+# Publish flagged comments to Kafka
+poetry run python -m osint_comments.e24_integration analyze --publish-to-kafka --kafka-servers localhost:9092
+```
+
+### Running the Full Pipeline
+
+You can run the complete pipeline with a single command:
+
+```bash
+# Run the full pipeline with default settings
+poetry run python -m osint_comments.e24_integration pipeline
+
+# Run the pipeline with custom settings
+poetry run python -m osint_comments.e24_integration pipeline --months-back 3 --max-articles 100 --limit 50 --publish-to-kafka --kafka-servers localhost:9092
+```
+
+This will:
+1. Crawl articles from the specified months (default: current month)
+2. Gather comments for those articles
+3. Analyze the comments for harmful content
 
 ### Running the Analysis Pipeline Directly
 
