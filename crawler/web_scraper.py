@@ -32,6 +32,7 @@ class E24Scraper:
     def get_article_list(self, page: int = 1) -> List[Article]:
         """
         Fetch a list of articles from the main page or category pages.
+        Only includes articles with URLs matching the pattern https://e24.no/i/{article_id}
         
         Args:
             page: Page number to fetch (for pagination)
@@ -60,49 +61,18 @@ class E24Scraper:
             if cookie_button:
                 logger.info("Cookie consent dialog detected. In a real scenario, we would need to handle this.")
             
-            # Find all article elements - looking for various possible selectors
-            article_elements = []
+            # Find all links on the page
+            all_links = soup.select('a[href]')
+            logger.info(f"Found {len(all_links)} links on page {page}")
             
-            # Try different selectors that might contain articles
-            for selector in [
-                'article', 
-                '.article', 
-                '.article-teaser', 
-                '.teaser', 
-                '.news-item',
-                'a[href^="/"]',  # Links that start with / (relative URLs)
-                'a[href*="/naeringsliv/"]',  # Links containing /naeringsliv/
-                'a[href*="/finans/"]',  # Links containing /finans/
-                'a[href*="/boers/"]',  # Links containing /boers/
-                '.frontpage-teaser',
-                '[class*="article"]',  # Any element with "article" in its class
-                '[class*="teaser"]',   # Any element with "teaser" in its class
-            ]:
-                elements = soup.select(selector)
-                if elements:
-                    article_elements.extend(elements)
-                    logger.debug(f"Found {len(elements)} elements with selector: {selector}")
-            
-            # Remove duplicates (in case the same element was selected multiple times)
-            article_elements = list(set(article_elements))
-            logger.info(f"Found {len(article_elements)} potential article elements")
-            
-            # Process each article element
+            # Process each link to find article URLs matching our pattern
             articles = []
-            for article_elem in article_elements:
+            article_pattern = re.compile(r'^https?://e24\.no/i/[a-zA-Z0-9]+$')
+            
+            for link in all_links:
                 try:
-                    # If the element is a link itself
-                    if article_elem.name == 'a':
-                        link_elem = article_elem
-                    else:
-                        # Look for links in the element
-                        link_elem = article_elem.select_one('a')
-                    
-                    if not link_elem:
-                        continue
-                    
                     # Get the URL
-                    article_url = link_elem.get('href')
+                    article_url = link.get('href')
                     if not article_url:
                         continue
                     
@@ -110,17 +80,19 @@ class E24Scraper:
                     if not article_url.startswith('http'):
                         article_url = f"{self.BASE_URL}{article_url}"
                     
-                    # Skip non-article URLs
-                    if '/tag/' in article_url or '/topic/' in article_url or '/author/' in article_url:
-                        continue
+                    # Check if the URL matches our pattern for E24 articles
+                    if not article_pattern.match(article_url):
+                        # Try with trailing slash
+                        if not article_pattern.match(article_url.rstrip('/')):
+                            continue
                     
                     # Extract title
                     # First try to find a heading element
-                    title_elem = article_elem.select_one('h1, h2, h3, h4')
+                    title_elem = link.select_one('h1, h2, h3, h4')
                     
                     # If no heading, try to use the link text
                     if not title_elem:
-                        title = link_elem.text.strip()
+                        title = link.text.strip()
                     else:
                         title = title_elem.text.strip()
                     
@@ -133,7 +105,10 @@ class E24Scraper:
                         url=article_url,
                         title=title
                     )
-                    articles.append(article)
+                    
+                    # Only add if not already in the list (avoid duplicates)
+                    if not any(a.url == article_url for a in articles):
+                        articles.append(article)
                     
                 except Exception as e:
                     logger.error(f"Error extracting article data: {e}")
@@ -292,6 +267,7 @@ class E24Scraper:
     def get_related_articles(self, article_url: str, max_related: int = 3) -> List[Article]:
         """
         Find related articles from an article page.
+        Only includes articles with URLs matching the pattern https://e24.no/i/{article_id}
         
         Args:
             article_url: URL of the article to find related articles from
@@ -335,6 +311,9 @@ class E24Scraper:
                 if article_content:
                     related_sections = [article_content]
             
+            # Define the article pattern
+            article_pattern = re.compile(r'^https?://e24\.no/i/[a-zA-Z0-9]+$')
+            
             # Extract links from related sections
             for section in related_sections:
                 links = section.select('a[href]')
@@ -349,9 +328,11 @@ class E24Scraper:
                         if not related_url.startswith('http'):
                             related_url = f"{self.BASE_URL}{related_url}"
                         
-                        # Skip non-article URLs
-                        if '/tag/' in related_url or '/topic/' in related_url or '/author/' in related_url:
-                            continue
+                        # Check if the URL matches our pattern for E24 articles
+                        if not article_pattern.match(related_url):
+                            # Try with trailing slash
+                            if not article_pattern.match(related_url.rstrip('/')):
+                                continue
                         
                         # Skip if already in the list
                         if any(article.url == related_url for article in related_articles):
