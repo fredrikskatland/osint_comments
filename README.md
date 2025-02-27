@@ -7,7 +7,7 @@ This project provides tools for collecting, analyzing, and processing comments f
 The OSINT Comments project consists of two main components:
 
 1. **OSINT Comments Core** - A framework for analyzing and processing comments
-2. **E24 Crawler** - A web crawler for collecting articles and comments from e24.no
+2. **E24 Crawler** - A web crawler for collecting articles from e24.no
 
 These components work together to create a pipeline for collecting, analyzing, and storing comments from online sources.
 
@@ -25,6 +25,7 @@ The project follows clean architecture principles with separation of concerns:
    - Repositories for data storage
    - Kafka producers/consumers for messaging
    - Web scrapers for data collection
+   - API clients for fetching comments
 
 4. **Interface Layer**
    - CLI tools for running components
@@ -35,16 +36,16 @@ The project follows clean architecture principles with separation of concerns:
 ### 1. OSINT Comments Core (osint_comments/)
 
 The core package provides functionality for:
+- Gathering comments using API clients
 - Analyzing comments using NLP techniques
 - Storing comments and articles in a database
 - Processing comments through a Kafka-based pipeline
-- API client for interacting with external services
 
 For more details, see the [OSINT Comments documentation](osint_comments/README.md).
 
 ### 2. E24 Crawler (crawler/)
 
-A web crawler for e24.no that identifies articles with comments, following clean architecture principles with separation of concerns.
+A web crawler for e24.no that identifies articles, following clean architecture principles with separation of concerns.
 
 For more details, see the [E24 Crawler documentation](crawler/README.md).
 
@@ -54,7 +55,7 @@ For more details, see the [E24 Crawler documentation](crawler/README.md).
 
 - Python 3.10+
 - Poetry (for dependency management)
-- Kafka (for the full pipeline)
+- Kafka (optional, for the full pipeline)
 - SQLite (for local storage)
 
 ### Installation
@@ -75,31 +76,43 @@ poetry install
 poetry shell
 ```
 
-### Running the Components
+### Running the Pipeline
 
-#### Running the E24 Crawler
+The project follows a three-step pipeline:
+
+1. **Crawl**: Collect articles from e24.no
+2. **Gather**: Fetch comments for articles using the API
+3. **Analyze**: Analyze comments for harmful content
+
+You can run each step individually or the full pipeline:
 
 ```bash
-# Run with default settings (crawl 3 pages)
-python -m crawler
+# Run the full pipeline
+poetry run python -m osint_comments.e24_integration pipeline
 
-# Crawl more pages
-python -m crawler --pages 5
+# Run individual steps
+poetry run python -m osint_comments.e24_integration crawl
+poetry run python -m osint_comments.e24_integration gather
+poetry run python -m osint_comments.e24_integration analyze
 
-# List articles with comments from the database
-python -m crawler --list-comments
+# Show statistics
+poetry run python -m osint_comments.e24_integration stats
 ```
 
-#### Running the Integration
-
-To use the crawler with the OSINT Comments pipeline:
+### Advanced Options
 
 ```bash
-# Run the integration script
-python -m osint_comments.e24_integration
+# Crawl with depth (follow related articles)
+poetry run python -m osint_comments.e24_integration crawl --crawl-method depth --related-articles 3 --depth 2
 
-# Specify number of pages to crawl
-python -m osint_comments.e24_integration --pages 5
+# Gather comments for a specific article
+poetry run python -m osint_comments.e24_integration gather --article-id article:e24:example-article
+
+# Analyze comments with Kafka integration
+poetry run python -m osint_comments.e24_integration analyze --publish-to-kafka --kafka-servers localhost:9092
+
+# Run the full pipeline with all options
+poetry run python -m osint_comments.e24_integration pipeline --pages 5 --crawl-method depth --related-articles 3 --depth 2 --publish-to-kafka --kafka-servers localhost:9092
 ```
 
 ## Testing

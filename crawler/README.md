@@ -1,15 +1,15 @@
 # E24 Crawler
 
-A web crawler for e24.no that identifies articles with comments, following clean architecture principles with separation of concerns.
+A web crawler for e24.no that identifies articles, following clean architecture principles with separation of concerns.
 
 ## Features
 
 - Crawls e24.no to find articles
-- Identifies articles with comments
+- Supports depth crawling to follow related articles
 - Stores article data in a SQLite database
 - Caches crawled URLs to avoid redundant processing
 - Command-line interface for easy usage
-- Integration with Kafka for publishing articles with comments
+- Integration with Kafka for publishing articles
 
 ## Architecture
 
@@ -65,15 +65,26 @@ python -m crawler --max-articles 10
 # Force recrawling of articles that have been crawled before
 python -m crawler --force-recrawl
 
-# List articles with comments from the database
-python -m crawler --list-comments
-
 # List recent articles from the database
 python -m crawler --list-recent
 
 # Enable verbose logging
 python -m crawler --verbose
 ```
+
+### Depth Crawling
+
+The crawler supports depth crawling, which follows related articles from each article:
+
+```bash
+# Run with depth crawling
+python -m crawler --crawl-method depth --related-articles 3 --depth 2
+```
+
+This will:
+1. Crawl the front page to find initial articles
+2. For each article, follow up to 3 related articles
+3. Continue this process up to a depth of 2
 
 ### API Usage
 
@@ -93,37 +104,27 @@ crawler_service = CrawlerService(
     cache_dir="./cache"
 )
 
-# Run crawler
+# Run standard crawler
 articles = crawler_service.crawl_recent_articles(pages=3)
-articles_with_comments = crawler_service.process_articles(articles)
+processed_articles = crawler_service.process_articles(articles)
+
+# Run depth crawler
+articles = crawler_service.crawl_with_depth(pages=1, max_related=3, depth=2)
+processed_articles = crawler_service.process_articles(articles)
 
 # Print results
-for article in articles_with_comments:
+for article in processed_articles:
     print(f"{article.title} - {article.url}")
-    print(f"Comments: {article.comment_count}")
     print("-" * 50)
 ```
 
 ## Integration with OSINT Comments
 
-The crawler can be integrated with the OSINT Comments project to analyze comments from e24.no:
+The crawler is designed to work with the OSINT Comments project as part of a three-step pipeline:
 
-```python
-from crawler.crawler_service import CrawlerService
-from osint_comments.kafka_producer import KafkaProducer
-
-# Create Kafka producer
-kafka_producer = KafkaProducer(bootstrap_servers="localhost:9092")
-
-# Create crawler service with Kafka producer
-crawler_service = CrawlerService(
-    repository=repository,
-    kafka_producer=kafka_producer
-)
-
-# Run crawler (articles with comments will be published to Kafka)
-crawler_service.run_crawler(pages=3)
-```
+1. **Crawl** (E24 Crawler): Collect articles from e24.no
+2. **Gather** (OSINT Comments): Fetch comments for articles using the API
+3. **Analyze** (OSINT Comments): Analyze comments for harmful content
 
 For a complete integration example, see the `osint_comments.e24_integration` module.
 

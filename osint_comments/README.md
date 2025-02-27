@@ -1,13 +1,14 @@
 # OSINT Comments Core
 
-The core component of the OSINT Comments project, providing functionality for analyzing and processing comments from various online sources.
+The core component of the OSINT Comments project, providing functionality for gathering, analyzing, and processing comments from various online sources.
 
 ## Features
 
+- Gathering comments using API clients
 - Comment analysis using NLP techniques
 - Storage of comments and articles in a database
 - Processing pipeline using Kafka
-- API client for interacting with external services
+- Integration with the E24 Crawler
 
 ## Architecture
 
@@ -30,10 +31,52 @@ The OSINT Comments Core follows clean architecture principles:
 
 4. **Interface Layer**
    - `main.py`: Entry point for running the application
+   - `e24_integration.py`: Integration with the E24 Crawler
 
 ## Usage
 
-### Running the Analysis Pipeline
+### Running the Pipeline
+
+The OSINT Comments Core implements a three-step pipeline:
+
+1. **Crawl**: Collect articles from e24.no (using the E24 Crawler)
+2. **Gather**: Fetch comments for articles using the API
+3. **Analyze**: Analyze comments for harmful content
+
+You can run each step individually or the full pipeline:
+
+```bash
+# Run the full pipeline
+poetry run python -m osint_comments.e24_integration pipeline
+
+# Run individual steps
+poetry run python -m osint_comments.e24_integration crawl
+poetry run python -m osint_comments.e24_integration gather
+poetry run python -m osint_comments.e24_integration analyze
+
+# Show statistics
+poetry run python -m osint_comments.e24_integration stats
+```
+
+### Advanced Options
+
+```bash
+# Crawl with depth (follow related articles)
+poetry run python -m osint_comments.e24_integration crawl --crawl-method depth --related-articles 3 --depth 2
+
+# Gather comments for a specific article
+poetry run python -m osint_comments.e24_integration gather --article-id article:e24:example-article
+
+# Analyze comments with Kafka integration
+poetry run python -m osint_comments.e24_integration analyze --publish-to-kafka --kafka-servers localhost:9092
+
+# Run the full pipeline with all options
+poetry run python -m osint_comments.e24_integration pipeline --pages 5 --crawl-method depth --related-articles 3 --depth 2 --publish-to-kafka --kafka-servers localhost:9092
+```
+
+### Running the Analysis Pipeline Directly
+
+You can also run the analysis pipeline directly:
 
 ```bash
 # Run the main analysis pipeline
@@ -41,18 +84,6 @@ python -m osint_comments.main
 
 # Run with custom configuration
 python -m osint_comments.main --config config.json
-```
-
-### Integrating with E24 Crawler
-
-The OSINT Comments Core can be integrated with the E24 Crawler to analyze comments from e24.no:
-
-```bash
-# Run the integration script
-python -m osint_comments.e24_integration
-
-# Specify number of pages to crawl
-python -m osint_comments.e24_integration --pages 5
 ```
 
 ## Configuration
@@ -84,3 +115,13 @@ The OSINT Comments Core is designed to be extensible:
 - Add new analysis techniques in `comment_analyzer.py`
 - Add new data sources by creating new integration modules
 - Add new storage backends by extending the repository
+
+## Integration with E24 Crawler
+
+The OSINT Comments Core is designed to work with the E24 Crawler as part of a three-step pipeline:
+
+1. **Crawl** (E24 Crawler): Collect articles from e24.no
+2. **Gather** (OSINT Comments): Fetch comments for articles using the API
+3. **Analyze** (OSINT Comments): Analyze comments for harmful content
+
+The `e24_integration.py` module provides a unified interface for running this pipeline.
