@@ -99,7 +99,8 @@ class Repository:
     
     def get_articles_with_comments_not_gathered(self, limit: Optional[int] = None) -> List[Article]:
         """
-        Get articles that have comments but haven't had their comments gathered yet.
+        Get articles that haven't had their comments gathered yet.
+        In the new approach, we check all articles for comments using the API.
         
         Args:
             limit: Maximum number of articles to return
@@ -108,7 +109,6 @@ class Repository:
             List of articles
         """
         query = self.session.query(Article).filter(
-            Article.has_comments == True,
             Article.comments_gathered == False
         ).order_by(Article.published_date.desc())
         

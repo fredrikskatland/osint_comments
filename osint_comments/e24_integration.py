@@ -116,6 +116,7 @@ class E24Integration:
                        depth: int = 2) -> List[Article]:
         """
         Crawl articles from e24.no and save them to the database.
+        In the new approach, we don't check for comments in the crawler.
         
         Args:
             pages: Number of pages to crawl
@@ -125,7 +126,7 @@ class E24Integration:
             depth: Maximum depth to crawl (for depth crawling)
             
         Returns:
-            List of articles with comments
+            List of processed articles
         """
         # Determine crawl method
         if crawl_method == "depth":
@@ -146,7 +147,7 @@ class E24Integration:
         console.print(f"[bold]Found {len(crawler_articles)} articles[/bold]")
         
         # Process articles
-        articles_with_comments = []
+        processed_articles = []
         for crawler_article in crawler_articles:
             # Process the article content if needed
             if process_content and not crawler_article.content:
@@ -154,24 +155,21 @@ class E24Integration:
             
             # Save to our database
             article = self.repository.save_article_from_crawler(crawler_article)
-            
-            # Track articles with comments
-            if article.has_comments:
-                articles_with_comments.append(article)
+            processed_articles.append(article)
         
         # Print summary
         console.print(f"[bold green]Saved {len(crawler_articles)} articles to database[/bold green]")
-        console.print(f"[bold]Found {len(articles_with_comments)} articles with comments[/bold]")
         
         # Print statistics
         self.print_stats()
         
-        return articles_with_comments
+        return processed_articles
     
     def gather_comments(self, article_id: Optional[str] = None, limit: Optional[int] = None, 
                         publish_to_kafka: bool = False) -> int:
         """
-        Gather comments for articles that have comments but haven't had their comments gathered yet.
+        Gather comments for articles that haven't had their comments gathered yet.
+        This method checks all articles for comments using the API.
         
         Args:
             article_id: Identifier for a specific article (optional)
@@ -199,6 +197,7 @@ class E24Integration:
         # Process each article
         total_comments = 0
         new_comments = 0
+        articles_with_comments = 0
         
         for article in articles:
             console.print(f"Processing article: {article.title}")
@@ -208,6 +207,14 @@ class E24Integration:
                 data = self.api_client.fetch_comments(article.identifier)
                 items = data.get("items", [])
                 console.print(f"  Fetched {len(items)} comments")
+                
+                # Update article has_comments and comment_count based on API response
+                has_comments = len(items) > 0
+                article.has_comments = has_comments
+                article.comment_count = len(items)
+                
+                if has_comments:
+                    articles_with_comments += 1
                 
                 # Process each comment
                 article_comments = 0
@@ -242,9 +249,12 @@ class E24Integration:
                 
             except Exception as e:
                 console.print(f"[bold red]Error processing article {article.identifier}: {e}[/bold red]")
+                # Still mark as gathered to avoid retrying failed articles
+                self.repository.mark_article_comments_gathered(article)
         
         # Print summary
         console.print(f"[bold green]Processed {total_comments} comments ({new_comments} new) for {len(articles)} articles[/bold green]")
+        console.print(f"[bold green]Found {articles_with_comments} articles with comments[/bold green]")
         
         # Print statistics
         self.print_stats()
@@ -391,7 +401,7 @@ class E24Integration:
         
         # Step 1: Crawl articles
         console.print("\n[bold]Step 1: Crawling articles[/bold]")
-        articles_with_comments = self.crawl_articles(
+        processed_articles = self.crawl_articles(
             pages=pages, 
             process_content=True,
             crawl_method=crawl_method,
@@ -407,8 +417,12 @@ class E24Integration:
         console.print("\n[bold]Step 3: Analyzing comments[/bold]")
         analysis_stats = self.analyze_comments(limit=limit, publish_to_kafka=publish_to_kafka)
         
+        # Get articles with comments
+        articles_with_comments = self.session.query(Article).filter(Article.has_comments == True).all()
+        
         # Print final summary
         console.print("\n[bold green]Pipeline complete![/bold green]")
+        console.print(f"Processed {len(processed_articles)} articles")
         console.print(f"Found {len(articles_with_comments)} articles with comments")
         console.print(f"Gathered {new_comments} new comments")
         console.print(f"Analyzed {analysis_stats['analyzed']} comments ({analysis_stats['flagged']} flagged, {analysis_stats['errors']} errors)")

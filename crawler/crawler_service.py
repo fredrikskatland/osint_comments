@@ -136,6 +136,7 @@ class CrawlerService:
     def process_article_content(self, article: Article) -> Article:
         """
         Process an article to get its full content.
+        In the new approach, we don't check for comments in the crawler.
         
         Args:
             article: Article to process
@@ -151,8 +152,11 @@ class CrawlerService:
             article.content = full_article.content
             article.published_date = full_article.published_date
             article.author = full_article.author
-            article.has_comments = full_article.has_comments
-            article.comment_count = full_article.comment_count
+            
+            # In the new approach, we don't check for comments in the crawler
+            # This is now done in the gather step using the API
+            article.has_comments = False
+            article.comment_count = 0
         
         return article
     
@@ -160,17 +164,18 @@ class CrawlerService:
                          max_articles: Optional[int] = None,
                          publish_to_kafka: bool = True) -> List[Article]:
         """
-        Process articles to check for comments and save to repository.
+        Process articles to get full content and save to repository.
+        In the new approach, we don't check for comments in the crawler.
         
         Args:
             articles: List of articles to process
             max_articles: Maximum number of articles to process (None for all)
-            publish_to_kafka: Whether to publish articles with comments to Kafka
+            publish_to_kafka: Whether to publish articles to Kafka
             
         Returns:
-            List of articles with comments
+            List of processed articles
         """
-        articles_with_comments = []
+        processed_articles = []
         now = datetime.now()
         
         # Limit the number of articles if specified
@@ -188,15 +193,18 @@ class CrawlerService:
             logger.info(f"Processing article {i+1}/{len(articles)}: {article.title}")
             
             # Get full article details if needed
-            if not article.content or not article.has_comments:
+            if not article.content:
                 full_article = self.scraper.get_article_details(article.url)
                 
                 # Update article with full details
                 article.content = full_article.content
                 article.published_date = full_article.published_date
                 article.author = full_article.author
-                article.has_comments = full_article.has_comments
-                article.comment_count = full_article.comment_count
+                
+                # In the new approach, we don't check for comments in the crawler
+                # This is now done in the gather step using the API
+                article.has_comments = False
+                article.comment_count = 0
             
             # Update crawled URLs cache
             self.crawled_urls[article.url] = now
@@ -209,17 +217,15 @@ class CrawlerService:
                 except Exception as e:
                     logger.error(f"Error saving article to repository: {e}")
             
-            # If article has comments, add to list and publish to Kafka
-            if article.has_comments:
-                logger.info(f"Found article with comments: {article.title} (Count: {article.comment_count})")
-                articles_with_comments.append(article)
-                
-                if publish_to_kafka and self.kafka_producer:
-                    try:
-                        self.kafka_producer.send_message("article-with-comments", article.to_dict())
-                        logger.debug(f"Published article to Kafka: {article.title}")
-                    except Exception as e:
-                        logger.error(f"Error publishing article to Kafka: {e}")
+            processed_articles.append(article)
+            
+            # Publish to Kafka if enabled
+            if publish_to_kafka and self.kafka_producer:
+                try:
+                    self.kafka_producer.send_message("articles", article.to_dict())
+                    logger.debug(f"Published article to Kafka: {article.title}")
+                except Exception as e:
+                    logger.error(f"Error publishing article to Kafka: {e}")
             
             # Avoid overloading the server
             if i < len(articles) - 1:
@@ -229,8 +235,8 @@ class CrawlerService:
         # Save updated crawled URLs cache
         self._save_crawled_urls()
         
-        logger.info(f"Found {len(articles_with_comments)} articles with comments")
-        return articles_with_comments
+        logger.info(f"Processed {len(processed_articles)} articles")
+        return processed_articles
     
     def run_crawler(self, pages: int = 5, max_articles: Optional[int] = None) -> List[Article]:
         """
@@ -241,7 +247,7 @@ class CrawlerService:
             max_articles: Maximum number of articles to process (None for all)
             
         Returns:
-            List of articles with comments
+            List of processed articles
         """
         articles = self.crawl_recent_articles(pages)
         return self.process_articles(articles, max_articles)
@@ -258,7 +264,7 @@ class CrawlerService:
             max_articles: Maximum number of articles to process (None for all)
             
         Returns:
-            List of articles with comments
+            List of processed articles
         """
         articles = self.crawl_with_depth(pages=pages, max_related=max_related, depth=depth)
         return self.process_articles(articles, max_articles)

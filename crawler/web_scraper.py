@@ -276,7 +276,8 @@ class E24Scraper:
     
     def check_for_comments(self, soup: BeautifulSoup) -> Tuple[bool, Optional[int]]:
         """
-        Check if an article has comments and count them if possible.
+        This method is deprecated and will always return (False, None).
+        The comment checking is now done in the gather step using the API.
         
         Args:
             soup: BeautifulSoup object of the article page
@@ -284,43 +285,8 @@ class E24Scraper:
         Returns:
             Tuple of (has_comments, comment_count)
         """
-        # Look for comment section or comment count elements on e24.no
-        # E24 might use different comment systems like Disqus or their own system
-        comment_section = soup.select_one('#comments, .comments-section, .disqus_thread, .comment-container, .article-comments')
-        
-        # Also look for comment count indicators
-        count_elem = soup.select_one('.comment-count, .comments-count, .comment-number, span[data-comment-count]')
-        
-        # Check for text indicating comments like "X kommentarer" anywhere on the page
-        comment_text_elem = soup.find(string=re.compile(r'\d+\s*kommentar(er)?', re.IGNORECASE))
-        
-        if comment_section or count_elem or comment_text_elem:
-            comment_count = None
-            
-            # Try to extract count from count element
-            if count_elem:
-                count_text = count_elem.text.strip()
-                match = re.search(r'(\d+)', count_text)
-                if match:
-                    comment_count = int(match.group(1))
-            
-            # Try to extract count from comment text
-            elif comment_text_elem:
-                match = re.search(r'(\d+)\s*kommentar', comment_text_elem, re.IGNORECASE)
-                if match:
-                    comment_count = int(match.group(1))
-            
-            # If we found a comment section but no count, set count to 1 as a minimum
-            if comment_count is None and comment_section:
-                # Count actual comment elements if possible
-                comment_elements = comment_section.select('.comment, .comment-item')
-                if comment_elements:
-                    comment_count = len(comment_elements)
-                else:
-                    comment_count = 1  # At least one comment if section exists
-            
-            return True, comment_count
-        
+        # In the new approach, we don't check for comments in the crawler
+        # This is now done in the gather step using the API
         return False, None
     
     def get_related_articles(self, article_url: str, max_related: int = 3) -> List[Article]:
