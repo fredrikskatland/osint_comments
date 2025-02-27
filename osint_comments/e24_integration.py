@@ -24,7 +24,6 @@ import crawler.models
 from .models import Base, Article, Comment, User
 from .repository import Repository
 from .api_client import APIClient
-from .kafka_producer import KafkaProducer
 from .llm_client import OpenAIClient
 from . import config
 
@@ -53,13 +52,13 @@ class E24Integration:
     3. Analyzing comments for harmful content
     """
     
-    def __init__(self, db_path: str = "osint_comments.db", kafka_bootstrap_servers: str = "localhost:9092"):
+    def __init__(self, db_path: str = "osint_comments.db", kafka_bootstrap_servers: Optional[str] = None):
         """
         Initialize the integration.
         
         Args:
             db_path: Path to the SQLite database file
-            kafka_bootstrap_servers: Kafka bootstrap servers
+            kafka_bootstrap_servers: Kafka bootstrap servers (optional)
         """
         # Set up database
         self.db_path = db_path
@@ -80,16 +79,28 @@ class E24Integration:
         # Set up LLM client
         self.llm_client = OpenAIClient()
         
-        # Set up Kafka producers
-        self.raw_comments_producer = KafkaProducer(
-            bootstrap_servers=kafka_bootstrap_servers,
-            topic=config.RAW_COMMENTS_TOPIC
-        )
+        # Set up Kafka producers if Kafka is enabled
+        self.raw_comments_producer = None
+        self.flagged_comments_producer = None
         
-        self.flagged_comments_producer = KafkaProducer(
-            bootstrap_servers=kafka_bootstrap_servers,
-            topic=config.FLAGGED_COMMENTS_TOPIC
-        )
+        if kafka_bootstrap_servers:
+            try:
+                from .kafka_producer import KafkaProducer
+                
+                self.raw_comments_producer = KafkaProducer(
+                    bootstrap_servers=kafka_bootstrap_servers,
+                    topic=config.RAW_COMMENTS_TOPIC
+                )
+                
+                self.flagged_comments_producer = KafkaProducer(
+                    bootstrap_servers=kafka_bootstrap_servers,
+                    topic=config.FLAGGED_COMMENTS_TOPIC
+                )
+                
+                console.print("[bold green]Kafka producers initialized[/bold green]")
+            except Exception as e:
+                console.print(f"[bold yellow]Warning: Failed to initialize Kafka producers: {e}[/bold yellow]")
+                console.print("[bold yellow]Continuing without Kafka support[/bold yellow]")
         
         # Set up crawler components
         self.scraper = crawler.web_scraper.E24Scraper()
@@ -202,7 +213,7 @@ class E24Integration:
                         article_new_comments += 1
                         
                         # Publish to Kafka if enabled
-                        if publish_to_kafka:
+                        if publish_to_kafka and self.raw_comments_producer:
                             self.raw_comments_producer.send_message(comment.to_dict())
                 
                 # Update article status
@@ -276,7 +287,7 @@ class E24Integration:
                     console.print(f"  [bold yellow]Flagged comment: {comment.message[:50]}...[/bold yellow]")
                     
                     # Publish to Kafka if enabled
-                    if publish_to_kafka:
+                    if publish_to_kafka and self.flagged_comments_producer:
                         self.flagged_comments_producer.send_message({
                             "comment_id": comment.id,
                             "message": comment.message,
@@ -396,14 +407,14 @@ def main():
     parser.add_argument(
         "--kafka-servers", 
         type=str, 
-        default="localhost:9092", 
-        help="Kafka bootstrap servers (default: localhost:9092)"
+        default=None, 
+        help="Kafka bootstrap servers (default: None, disables Kafka)"
     )
     
     parser.add_argument(
         "--publish-to-kafka", 
         action="store_true", 
-        help="Publish to Kafka"
+        help="Publish to Kafka (requires --kafka-servers)"
     )
     
     # Create subparsers for different commands
@@ -470,6 +481,11 @@ def main():
     stats_parser = subparsers.add_parser("stats", help="Show statistics")
     
     args = parser.parse_args()
+    
+    # Check if publish_to_kafka is set but kafka_servers is not
+    if args.publish_to_kafka and not args.kafka_servers:
+        console.print("[bold red]Error: --publish-to-kafka requires --kafka-servers[/bold red]")
+        return
     
     # Create integration
     integration = E24Integration(

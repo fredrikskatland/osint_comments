@@ -16,7 +16,6 @@ import json
 from .models import Base, Article, Comment
 from .repository import Repository
 from .api_client import APIClient
-from .kafka_producer import KafkaProducer
 from .llm_client import OpenAIClient
 from . import config
 
@@ -126,11 +125,17 @@ def gather_comments(args):
     
     # Set up Kafka producer if needed
     kafka_producer = None
-    if args.publish_to_kafka:
-        kafka_producer = KafkaProducer(
-            bootstrap_servers=args.kafka_servers,
-            topic=config.RAW_COMMENTS_TOPIC
-        )
+    if args.publish_to_kafka and args.kafka_servers:
+        try:
+            from .kafka_producer import KafkaProducer
+            kafka_producer = KafkaProducer(
+                bootstrap_servers=args.kafka_servers,
+                topic=config.RAW_COMMENTS_TOPIC
+            )
+            console.print("[bold green]Kafka producer initialized[/bold green]")
+        except Exception as e:
+            console.print(f"[bold yellow]Warning: Failed to initialize Kafka producer: {e}[/bold yellow]")
+            console.print("[bold yellow]Continuing without Kafka support[/bold yellow]")
     
     # Get articles that need comments gathered
     if args.article_id:
@@ -229,11 +234,17 @@ def analyze_comments(args):
     
     # Set up Kafka producer if needed
     kafka_producer = None
-    if args.publish_to_kafka:
-        kafka_producer = KafkaProducer(
-            bootstrap_servers=args.kafka_servers,
-            topic=config.FLAGGED_COMMENTS_TOPIC
-        )
+    if args.publish_to_kafka and args.kafka_servers:
+        try:
+            from .kafka_producer import KafkaProducer
+            kafka_producer = KafkaProducer(
+                bootstrap_servers=args.kafka_servers,
+                topic=config.FLAGGED_COMMENTS_TOPIC
+            )
+            console.print("[bold green]Kafka producer initialized[/bold green]")
+        except Exception as e:
+            console.print(f"[bold yellow]Warning: Failed to initialize Kafka producer: {e}[/bold yellow]")
+            console.print("[bold yellow]Continuing without Kafka support[/bold yellow]")
     
     # Get comments to analyze
     if args.article_id:
@@ -381,7 +392,7 @@ def main():
     gather_parser.add_argument("--article-id", help="Identifier for a specific article")
     gather_parser.add_argument("--limit", type=int, default=None, help="Maximum number of articles to process")
     gather_parser.add_argument("--db-path", default="osint_comments.db", help="Path to the SQLite database")
-    gather_parser.add_argument("--kafka-servers", default="localhost:9092", help="Kafka bootstrap servers")
+    gather_parser.add_argument("--kafka-servers", default=None, help="Kafka bootstrap servers (optional)")
     gather_parser.add_argument("--publish-to-kafka", action="store_true", help="Publish comments to Kafka")
     gather_parser.set_defaults(func=gather_comments)
     
@@ -390,7 +401,7 @@ def main():
     analyze_parser.add_argument("--article-id", help="Identifier for a specific article")
     analyze_parser.add_argument("--limit", type=int, default=None, help="Maximum number of comments to analyze")
     analyze_parser.add_argument("--db-path", default="osint_comments.db", help="Path to the SQLite database")
-    analyze_parser.add_argument("--kafka-servers", default="localhost:9092", help="Kafka bootstrap servers")
+    analyze_parser.add_argument("--kafka-servers", default=None, help="Kafka bootstrap servers (optional)")
     analyze_parser.add_argument("--publish-to-kafka", action="store_true", help="Publish flagged comments to Kafka")
     analyze_parser.set_defaults(func=analyze_comments)
     
@@ -400,6 +411,11 @@ def main():
     stats_parser.set_defaults(func=show_stats)
     
     args = parser.parse_args()
+    
+    # Check if publish_to_kafka is set but kafka_servers is not
+    if hasattr(args, 'publish_to_kafka') and args.publish_to_kafka and not args.kafka_servers:
+        console.print("[bold red]Error: --publish-to-kafka requires --kafka-servers[/bold red]")
+        return
     
     if args.command:
         args.func(args)
