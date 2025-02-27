@@ -10,7 +10,7 @@ import re
 from .models import Article
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -390,13 +390,18 @@ class E24Scraper:
         logger.info(f"Starting depth crawl with {len(start_urls)} start URLs, max_related={max_related}, depth={depth}")
         
         all_articles = []
-        to_visit = [(url, 1) for url in start_urls]  # (url, current_depth)
+        # Store (url, current_depth, parent_url) in the queue
+        to_visit = [(url, 1, "front_page") for url in start_urls]  # (url, current_depth, parent_url)
+        
+        # Keep track of article relationships
+        article_relationships = {}  # {url: {"depth": depth, "parent": parent_url, "title": title}}
         
         while to_visit:
-            url, current_depth = to_visit.pop(0)
+            url, current_depth, parent_url = to_visit.pop(0)
             
             # Skip if already visited
             if url in self.visited_urls:
+                logger.debug(f"Skipping already visited URL: {url}")
                 continue
             
             # Mark as visited
@@ -406,18 +411,42 @@ class E24Scraper:
             article = self.get_article_details(url)
             all_articles.append(article)
             
+            # Log article details with depth and parent information
+            depth_indicator = "  " * (current_depth - 1) + "└─" if current_depth > 1 else ""
+            logger.info(f"{depth_indicator}Depth {current_depth}: {article.title} (from: {parent_url})")
+            
+            # Store relationship information
+            article_relationships[url] = {
+                "depth": current_depth,
+                "parent": parent_url,
+                "title": article.title
+            }
+            
             # If we haven't reached max depth, get related articles
             if current_depth < depth:
                 related_articles = self.get_related_articles(url, max_related)
                 
+                # Log related articles found
+                if related_articles:
+                    logger.info(f"{depth_indicator}  Found {len(related_articles)} related articles for: {article.title}")
+                else:
+                    logger.info(f"{depth_indicator}  No related articles found for: {article.title}")
+                
                 # Add related articles to visit queue
                 for related in related_articles:
                     if related.url not in self.visited_urls:
-                        to_visit.append((related.url, current_depth + 1))
+                        to_visit.append((related.url, current_depth + 1, article.title))
+                        logger.debug(f"Added to queue: {related.title} (depth: {current_depth + 1}, parent: {article.title})")
             
             # Avoid overloading the server
             import time
             time.sleep(1)  # 1-second delay between requests
+        
+        # Print article relationship summary
+        logger.info("Article Relationship Summary:")
+        for depth_level in range(1, depth + 1):
+            depth_articles = [info for url, info in article_relationships.items() if info["depth"] == depth_level]
+            logger.info(f"Depth {depth_level}: {len(depth_articles)} articles")
         
         logger.info(f"Depth crawl complete, found {len(all_articles)} articles")
         return all_articles
