@@ -36,8 +36,8 @@ class Repository:
         Returns:
             The saved Article
         """
-        # Generate an identifier from the URL
-        identifier = f"article:e24:{crawler_article.url.split('/')[-1]}"
+        # Use the identifier already set by the crawler
+        identifier = f"article:e24:{crawler_article.identifier}"
         
         # Check if the article already exists
         article = self.session.query(Article).filter_by(identifier=identifier).first()
