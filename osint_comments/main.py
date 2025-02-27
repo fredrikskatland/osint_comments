@@ -75,9 +75,22 @@ def crawl_articles(args):
         cache_dir=args.cache_dir
     )
     
-    # Crawl articles
-    console.print(f"[bold green]Crawling articles from e24.no (pages: {args.pages})[/bold green]")
-    articles = crawler_service.crawl_recent_articles(pages=args.pages)
+    # Determine crawl method based on arguments
+    if args.crawl_method == "depth":
+        console.print(f"[bold green]Crawling articles from e24.no with depth crawling[/bold green]")
+        console.print(f"[bold]Front pages: {args.pages}, Related articles: {args.related_articles}, Depth: {args.depth}[/bold]")
+        
+        # Use depth crawling
+        articles = crawler_service.crawl_with_depth(
+            pages=args.pages,
+            max_related=args.related_articles,
+            depth=args.depth
+        )
+    else:
+        # Use regular crawling
+        console.print(f"[bold green]Crawling articles from e24.no (pages: {args.pages})[/bold green]")
+        articles = crawler_service.crawl_recent_articles(pages=args.pages)
+    
     console.print(f"[bold]Found {len(articles)} articles[/bold]")
     
     # Process articles
@@ -385,6 +398,15 @@ def main():
     crawl_parser.add_argument("--db-path", default="osint_comments.db", help="Path to the SQLite database")
     crawl_parser.add_argument("--cache-dir", default="./cache", help="Directory for caching crawled articles")
     crawl_parser.add_argument("--process-content", action="store_true", help="Process article content")
+    
+    # Add crawl method options
+    crawl_parser.add_argument("--crawl-method", choices=["standard", "depth"], default="standard",
+                             help="Crawling method to use (standard or depth)")
+    crawl_parser.add_argument("--related-articles", type=int, default=3,
+                             help="Number of related articles to follow from each article (for depth crawling)")
+    crawl_parser.add_argument("--depth", type=int, default=2,
+                             help="Maximum depth to crawl (for depth crawling)")
+    
     crawl_parser.set_defaults(func=crawl_articles)
     
     # Gather comments command

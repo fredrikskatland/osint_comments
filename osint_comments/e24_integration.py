@@ -111,21 +111,38 @@ class E24Integration:
             cache_dir="./e24_cache"
         )
     
-    def crawl_articles(self, pages: int = 3, process_content: bool = False) -> List[Article]:
+    def crawl_articles(self, pages: int = 3, process_content: bool = False, 
+                       crawl_method: str = "standard", related_articles: int = 3, 
+                       depth: int = 2) -> List[Article]:
         """
         Crawl articles from e24.no and save them to the database.
         
         Args:
             pages: Number of pages to crawl
             process_content: Whether to process article content
+            crawl_method: Crawling method to use ("standard" or "depth")
+            related_articles: Number of related articles to follow from each article (for depth crawling)
+            depth: Maximum depth to crawl (for depth crawling)
             
         Returns:
             List of articles with comments
         """
-        console.print(f"[bold green]Crawling articles from e24.no (pages: {pages})[/bold green]")
+        # Determine crawl method
+        if crawl_method == "depth":
+            console.print(f"[bold green]Crawling articles from e24.no with depth crawling[/bold green]")
+            console.print(f"[bold]Front pages: {pages}, Related articles: {related_articles}, Depth: {depth}[/bold]")
+            
+            # Use depth crawling
+            crawler_articles = self.crawler_service.crawl_with_depth(
+                pages=pages,
+                max_related=related_articles,
+                depth=depth
+            )
+        else:
+            # Use regular crawling
+            console.print(f"[bold green]Crawling articles from e24.no (pages: {pages})[/bold green]")
+            crawler_articles = self.crawler_service.crawl_recent_articles(pages=pages)
         
-        # Crawl articles
-        crawler_articles = self.crawler_service.crawl_recent_articles(pages=pages)
         console.print(f"[bold]Found {len(crawler_articles)} articles[/bold]")
         
         # Process articles
@@ -356,13 +373,17 @@ class E24Integration:
         
         console.print(table)
     
-    def run_full_pipeline(self, pages: int = 3, limit: Optional[int] = None, 
-                          publish_to_kafka: bool = False) -> None:
+    def run_full_pipeline(self, pages: int = 3, crawl_method: str = "standard", 
+                          related_articles: int = 3, depth: int = 2, 
+                          limit: Optional[int] = None, publish_to_kafka: bool = False) -> None:
         """
         Run the full pipeline: crawl, gather comments, and analyze.
         
         Args:
             pages: Number of pages to crawl
+            crawl_method: Crawling method to use ("standard" or "depth")
+            related_articles: Number of related articles to follow from each article (for depth crawling)
+            depth: Maximum depth to crawl (for depth crawling)
             limit: Maximum number of articles/comments to process
             publish_to_kafka: Whether to publish to Kafka
         """
@@ -370,7 +391,13 @@ class E24Integration:
         
         # Step 1: Crawl articles
         console.print("\n[bold]Step 1: Crawling articles[/bold]")
-        articles_with_comments = self.crawl_articles(pages=pages, process_content=True)
+        articles_with_comments = self.crawl_articles(
+            pages=pages, 
+            process_content=True,
+            crawl_method=crawl_method,
+            related_articles=related_articles,
+            depth=depth
+        )
         
         # Step 2: Gather comments
         console.print("\n[bold]Step 2: Gathering comments[/bold]")
@@ -434,6 +461,26 @@ def main():
         help="Process article content"
     )
     
+    # Add crawl method options
+    crawl_parser.add_argument(
+        "--crawl-method", 
+        choices=["standard", "depth"], 
+        default="standard",
+        help="Crawling method to use (standard or depth)"
+    )
+    crawl_parser.add_argument(
+        "--related-articles", 
+        type=int, 
+        default=3,
+        help="Number of related articles to follow from each article (for depth crawling)"
+    )
+    crawl_parser.add_argument(
+        "--depth", 
+        type=int, 
+        default=2,
+        help="Maximum depth to crawl (for depth crawling)"
+    )
+    
     # Gather command
     gather_parser = subparsers.add_parser("gather", help="Gather comments for articles")
     gather_parser.add_argument(
@@ -477,6 +524,26 @@ def main():
         help="Maximum number of articles/comments to process"
     )
     
+    # Add crawl method options to pipeline command
+    pipeline_parser.add_argument(
+        "--crawl-method", 
+        choices=["standard", "depth"], 
+        default="standard",
+        help="Crawling method to use (standard or depth)"
+    )
+    pipeline_parser.add_argument(
+        "--related-articles", 
+        type=int, 
+        default=3,
+        help="Number of related articles to follow from each article (for depth crawling)"
+    )
+    pipeline_parser.add_argument(
+        "--depth", 
+        type=int, 
+        default=2,
+        help="Maximum depth to crawl (for depth crawling)"
+    )
+    
     # Stats command
     stats_parser = subparsers.add_parser("stats", help="Show statistics")
     
@@ -495,7 +562,13 @@ def main():
     
     # Run the appropriate command
     if args.command == "crawl":
-        integration.crawl_articles(pages=args.pages, process_content=args.process_content)
+        integration.crawl_articles(
+            pages=args.pages, 
+            process_content=args.process_content,
+            crawl_method=args.crawl_method,
+            related_articles=args.related_articles,
+            depth=args.depth
+        )
     elif args.command == "gather":
         integration.gather_comments(
             article_id=args.article_id,
@@ -511,6 +584,9 @@ def main():
     elif args.command == "pipeline":
         integration.run_full_pipeline(
             pages=args.pages,
+            crawl_method=args.crawl_method,
+            related_articles=args.related_articles,
+            depth=args.depth,
             limit=args.limit,
             publish_to_kafka=args.publish_to_kafka
         )

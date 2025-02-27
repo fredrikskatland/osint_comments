@@ -3,7 +3,7 @@ Web scraper for e24.no to extract articles and check for comments.
 """
 import requests
 from bs4 import BeautifulSoup
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 import logging
 from datetime import datetime
 import re
@@ -27,6 +27,7 @@ class E24Scraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
+        self.visited_urls = set()  # Keep track of visited URLs to avoid duplicates
     
     def get_article_list(self, page: int = 1) -> List[Article]:
         """
@@ -321,3 +322,155 @@ class E24Scraper:
             return True, comment_count
         
         return False, None
+    
+    def get_related_articles(self, article_url: str, max_related: int = 3) -> List[Article]:
+        """
+        Find related articles from an article page.
+        
+        Args:
+            article_url: URL of the article to find related articles from
+            max_related: Maximum number of related articles to return
+            
+        Returns:
+            List of Article objects for related articles
+        """
+        logger.info(f"Finding related articles from {article_url}")
+        
+        try:
+            response = self.session.get(article_url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            related_articles = []
+            
+            # Look for related articles sections
+            related_selectors = [
+                '.related-articles', 
+                '.article-recommendations', 
+                '.recommended-articles',
+                '.more-articles',
+                '.read-more',
+                '.similar-articles',
+                '[class*="related"]',
+                '[class*="recommendation"]',
+                'aside',
+                '.sidebar'
+            ]
+            
+            related_sections = []
+            for selector in related_selectors:
+                sections = soup.select(selector)
+                if sections:
+                    related_sections.extend(sections)
+            
+            # If no specific related sections found, look for links in the article
+            if not related_sections:
+                article_content = soup.select_one('article, .article, .article-content, main')
+                if article_content:
+                    related_sections = [article_content]
+            
+            # Extract links from related sections
+            for section in related_sections:
+                links = section.select('a[href]')
+                for link in links:
+                    try:
+                        # Get the URL
+                        related_url = link.get('href')
+                        if not related_url:
+                            continue
+                        
+                        # Make sure it's an absolute URL
+                        if not related_url.startswith('http'):
+                            related_url = f"{self.BASE_URL}{related_url}"
+                        
+                        # Skip non-article URLs
+                        if '/tag/' in related_url or '/topic/' in related_url or '/author/' in related_url:
+                            continue
+                        
+                        # Skip if already in the list
+                        if any(article.url == related_url for article in related_articles):
+                            continue
+                        
+                        # Extract title
+                        title_elem = link.select_one('h1, h2, h3, h4')
+                        if title_elem:
+                            title = title_elem.text.strip()
+                        else:
+                            title = link.text.strip()
+                        
+                        # Skip if no title
+                        if not title:
+                            continue
+                        
+                        # Create Article object with basic information
+                        article = Article(
+                            url=related_url,
+                            title=title
+                        )
+                        related_articles.append(article)
+                        
+                        # Stop if we have enough related articles
+                        if len(related_articles) >= max_related:
+                            break
+                    
+                    except Exception as e:
+                        logger.error(f"Error extracting related article data: {e}")
+                        continue
+                
+                # Stop if we have enough related articles
+                if len(related_articles) >= max_related:
+                    break
+            
+            logger.info(f"Found {len(related_articles)} related articles from {article_url}")
+            return related_articles
+            
+        except requests.RequestException as e:
+            logger.error(f"Error fetching related articles: {e}")
+            return []
+    
+    def crawl_with_depth(self, start_urls: List[str], max_related: int = 3, depth: int = 2) -> List[Article]:
+        """
+        Crawl articles starting from a list of URLs, following related articles up to a certain depth.
+        
+        Args:
+            start_urls: List of URLs to start crawling from
+            max_related: Maximum number of related articles to follow from each article
+            depth: Maximum depth to crawl (1 = only start_urls, 2 = start_urls + related, etc.)
+            
+        Returns:
+            List of Article objects
+        """
+        logger.info(f"Starting depth crawl with {len(start_urls)} start URLs, max_related={max_related}, depth={depth}")
+        
+        all_articles = []
+        to_visit = [(url, 1) for url in start_urls]  # (url, current_depth)
+        
+        while to_visit:
+            url, current_depth = to_visit.pop(0)
+            
+            # Skip if already visited
+            if url in self.visited_urls:
+                continue
+            
+            # Mark as visited
+            self.visited_urls.add(url)
+            
+            # Get article details
+            article = self.get_article_details(url)
+            all_articles.append(article)
+            
+            # If we haven't reached max depth, get related articles
+            if current_depth < depth:
+                related_articles = self.get_related_articles(url, max_related)
+                
+                # Add related articles to visit queue
+                for related in related_articles:
+                    if related.url not in self.visited_urls:
+                        to_visit.append((related.url, current_depth + 1))
+            
+            # Avoid overloading the server
+            import time
+            time.sleep(1)  # 1-second delay between requests
+        
+        logger.info(f"Depth crawl complete, found {len(all_articles)} articles")
+        return all_articles
