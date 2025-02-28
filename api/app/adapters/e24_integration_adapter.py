@@ -103,18 +103,54 @@ class E24IntegrationAdapter:
                 "message": f"Error getting stats: {str(e)}"
             }
     
-    async def get_articles(self, limit: Optional[int] = 10, offset: Optional[int] = 0) -> Dict[str, Any]:
+    async def get_articles(self, 
+                          limit: Optional[int] = 10, 
+                          offset: Optional[int] = 0,
+                          search: Optional[str] = None,
+                          has_comments: Optional[bool] = None,
+                          comments_gathered: Optional[bool] = None,
+                          comments_analyzed: Optional[bool] = None) -> Dict[str, Any]:
         """
-        Get articles from the database
+        Get articles from the database with filtering options
+        
+        Parameters:
+        - limit: Maximum number of articles to return
+        - offset: Offset for pagination
+        - search: Search query for article title
+        - has_comments: Filter articles that have comments
+        - comments_gathered: Filter articles that have had comments gathered
+        - comments_analyzed: Filter articles that have had comments analyzed
         """
         try:
             # Import the Article model directly
             from osint_comments.models import Article
+            from sqlalchemy import desc, or_
             
-            # Query articles from the database
-            articles = self.integration.session.query(Article).order_by(
-                Article.published_date.desc()
-            ).offset(offset).limit(limit).all()
+            # Start with a base query
+            query = self.integration.session.query(Article)
+            
+            # Apply filters
+            if search:
+                search_term = f"%{search}%"
+                query = query.filter(Article.title.ilike(search_term))
+                
+            if has_comments is not None:
+                query = query.filter(Article.has_comments == has_comments)
+                
+            if comments_gathered is not None:
+                query = query.filter(Article.comments_gathered == comments_gathered)
+                
+            if comments_analyzed is not None:
+                query = query.filter(Article.comments_analyzed == comments_analyzed)
+            
+            # Get total count with filters applied
+            total_count = query.count()
+            
+            # Apply ordering and pagination
+            query = query.order_by(desc(Article.published_date)).offset(offset).limit(limit)
+            
+            # Execute query
+            articles = query.all()
             
             # Convert to dictionaries
             articles_data = []
@@ -135,7 +171,7 @@ class E24IntegrationAdapter:
             return {
                 "status": "success",
                 "articles": articles_data,
-                "total": self.integration.repository.get_article_stats()["total_articles"]
+                "total": total_count
             }
         except Exception as e:
             return {

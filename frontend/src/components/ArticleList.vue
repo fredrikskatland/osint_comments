@@ -80,11 +80,29 @@ export default {
     limit: {
       type: Number,
       default: 10
+    },
+    searchQuery: {
+      type: String,
+      default: ''
+    },
+    filter: {
+      type: String,
+      default: 'all'
     }
   },
   watch: {
     limit() {
       // When limit changes, reset to first page and refetch
+      this.currentPage = 1;
+      this.fetchArticles();
+    },
+    searchQuery() {
+      // When search query changes, reset to first page and refetch
+      this.currentPage = 1;
+      this.fetchArticles();
+    },
+    filter() {
+      // When filter changes, reset to first page and refetch
       this.currentPage = 1;
       this.fetchArticles();
     }
@@ -116,12 +134,36 @@ export default {
       this.error = null;
       
       try {
-        const response = await axios.get(`/api/crawler/articles`, {
-          params: {
-            limit: this.limit,
-            offset: this.offset
+        // Prepare parameters
+        const params = {
+          limit: this.limit,
+          offset: this.offset
+        };
+        
+        // Add search query if provided
+        if (this.searchQuery) {
+          params.search = this.searchQuery;
+        }
+        
+        // Add filter if not 'all'
+        if (this.filter !== 'all') {
+          // Convert filter values to API parameters
+          switch (this.filter) {
+            case 'with-comments':
+              params.has_comments = true;
+              break;
+            case 'gathered':
+              params.comments_gathered = true;
+              break;
+            case 'analyzed':
+              params.comments_analyzed = true;
+              break;
           }
-        });
+        }
+        
+        console.log('Fetching articles with params:', params);
+        
+        const response = await axios.get(`/api/crawler/articles`, { params });
         
         if (response.data.status === 'success') {
           this.articles = response.data.articles;

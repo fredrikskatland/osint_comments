@@ -146,11 +146,12 @@ export default {
         this.socket.close();
       }
       
-      // Create a new WebSocket connection
+      // Create a new WebSocket connection using a relative URL
+      // This will go through the Vue.js proxy
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname;
-      const port = '8000'; // FastAPI backend port
-      const wsUrl = `${protocol}//${host}:${port}/api/ws`;
+      const wsUrl = `${protocol}//${window.location.host}/api/ws`;
+      
+      console.log('Connecting to WebSocket at:', wsUrl);
       
       this.socket = new WebSocket(wsUrl);
       
@@ -217,10 +218,33 @@ export default {
     handleSocketError(error) {
       console.error('WebSocket error:', error);
       
+      // Get detailed error information
+      let errorMessage = 'Unknown error';
+      if (error) {
+        if (error.message) {
+          errorMessage = error.message;
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        } else {
+          try {
+            errorMessage = JSON.stringify(error);
+          } catch (e) {
+            errorMessage = 'Error object could not be stringified';
+          }
+        }
+      }
+      
+      console.log('WebSocket connection details:', {
+        url: this.socket ? this.socket.url : 'No socket',
+        protocol: window.location.protocol,
+        host: window.location.host,
+        readyState: this.socket ? this.socket.readyState : 'No socket'
+      });
+      
       // Add a system log
       this.addLog({
         timestamp: new Date().toISOString(),
-        message: `WebSocket error: ${error.message || 'Unknown error'}`,
+        message: `WebSocket error: ${errorMessage}`,
         level: 'error',
         operation: 'system',
         entity_id: null

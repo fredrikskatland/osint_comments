@@ -34,46 +34,120 @@ async def crawl_with_logging(
     )
     
     try:
+        # Create a custom E24Integration instance with logging
+        from osint_comments.e24_integration import E24Integration
+        from osint_comments.models import Article
+        
+        # Create a custom E24Integration with the same db_path
+        e24_integration = E24Integration(db_path=integration.integration.db_path)
+        
+        # Patch the crawler_service to log each article
+        original_save_article = e24_integration.repository.save_article_from_crawler
+        
+        async def save_article_with_logging(crawler_article):
+            # Call the original method
+            article = original_save_article(crawler_article)
+            
+            # Log the article
+            await websocket_manager.log(
+                f"Crawled article: {article.title}",
+                level="info",
+                operation="crawl",
+                entity_id=article.identifier
+            )
+            
+            return article
+        
+        # Replace the method with our logging version
+        e24_integration.repository.save_article_from_crawler = save_article_with_logging
+        
         # Start crawling
-        # We need to directly call the integration's method and await it
-        result = await integration.crawl_articles(
-            process_content=process_content,
+        await websocket_manager.log(
+            f"Fetching articles from e24.no...",
+            level="info",
+            operation="crawl"
+        )
+        
+        # Call the crawl_articles method directly on our custom integration
+        articles = []
+        
+        # Use sitemap crawling
+        await websocket_manager.log(
+            f"Using sitemap crawling with months_back={months_back}",
+            level="info",
+            operation="crawl"
+        )
+        
+        crawler_articles = e24_integration.crawler_service.crawl_articles(
             months_back=months_back,
             max_articles=max_articles
         )
         
-        # Check if the result is successful
-        if result["status"] == "success":
-            articles_count = result["articles_count"]
-            
-            # Log completion
-            await websocket_manager.log(
-                f"Crawl completed: {articles_count} articles found",
-                level="info",
-                operation="crawl"
-            )
-            
-            # We don't have access to the actual article objects here,
-            # just the count, so we can't log individual articles
-            
-            # Log completion
-            await websocket_manager.log(
-                f"Crawl task completed successfully: {articles_count} articles processed",
-                level="info",
-                operation="crawl"
-            )
-            
-            return result
-        else:
-            # Log error from the result
-            await websocket_manager.log(
-                f"Error during crawl: {result['message']}",
-                level="error",
-                operation="crawl"
-            )
-            return result
+        await websocket_manager.log(
+            f"Found {len(crawler_articles)} articles in sitemap",
+            level="info",
+            operation="crawl"
+        )
         
-        # No need to restore anything since we're not patching methods anymore
+        # Process each article
+        for i, crawler_article in enumerate(crawler_articles):
+            try:
+                # Log progress
+                if i % 5 == 0 or i == len(crawler_articles) - 1:
+                    await websocket_manager.log(
+                        f"Processing article {i+1}/{len(crawler_articles)}",
+                        level="info",
+                        operation="crawl"
+                    )
+                
+                # Process the article content if needed
+                if process_content and not crawler_article.content:
+                    await websocket_manager.log(
+                        f"Processing content for article: {crawler_article.title}",
+                        level="info",
+                        operation="crawl",
+                        entity_id=crawler_article.identifier
+                    )
+                    e24_integration.crawler_service.process_article_content(crawler_article)
+                
+                # Save to our database with logging
+                article = await save_article_with_logging(crawler_article)
+                articles.append(article)
+                
+            except Exception as article_error:
+                await websocket_manager.log(
+                    f"Error processing article {crawler_article.title}: {str(article_error)}",
+                    level="error",
+                    operation="crawl",
+                    entity_id=crawler_article.identifier if hasattr(crawler_article, 'identifier') else None
+                )
+        
+        # Restore the original method
+        e24_integration.repository.save_article_from_crawler = original_save_article
+        
+        # Create a result similar to what integration.crawl_articles would return
+        result = {
+            "status": "success",
+            "articles_count": len(articles),
+            "message": f"Successfully crawled {len(articles)} articles"
+        }
+        
+        # Log completion
+        await websocket_manager.log(
+            f"Crawl completed: {len(articles)} articles processed",
+            level="info",
+            operation="crawl"
+        )
+        
+        # Log statistics
+        article_stats = e24_integration.repository.get_article_stats()
+        await websocket_manager.log(
+            f"Article statistics: {article_stats['total_articles']} total, {article_stats['articles_with_comments']} with comments",
+            level="info",
+            operation="crawl"
+        )
+        
+        return result
     except Exception as e:
         # Log error
         await websocket_manager.log(
@@ -131,12 +205,31 @@ async def get_stats(integration: E24IntegrationAdapter = Depends(get_integration
 async def get_articles(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    search: Optional[str] = None,
+    has_comments: Optional[bool] = None,
+    comments_gathered: Optional[bool] = None,
+    comments_analyzed: Optional[bool] = None,
     integration: E24IntegrationAdapter = Depends(get_integration)
 ):
     """
-    Get articles from the database
+    Get articles from the database with filtering options
+    
+    Parameters:
+    - limit: Maximum number of articles to return
+    - offset: Offset for pagination
+    - search: Search query for article title
+    - has_comments: Filter articles that have comments
+    - comments_gathered: Filter articles that have had comments gathered
+    - comments_analyzed: Filter articles that have had comments analyzed
     """
-    return await integration.get_articles(limit=limit, offset=offset)
+    return await integration.get_articles(
+        limit=limit, 
+        offset=offset,
+        search=search,
+        has_comments=has_comments,
+        comments_gathered=comments_gathered,
+        comments_analyzed=comments_analyzed
+    )
 
 @router.get("/articles/{article_id}")
 async def get_article_by_id(

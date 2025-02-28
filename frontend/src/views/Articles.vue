@@ -35,10 +35,18 @@
             </div>
           </div>
         </div>
+        <div class="d-flex justify-content-end">
+          <button class="btn btn-primary" @click="applyFilters">Apply Filters</button>
+        </div>
       </div>
     </div>
     
-    <article-list :limit="pageSize" />
+    <article-list 
+      ref="articleList"
+      :limit="pageSize" 
+      :search-query="appliedSearchQuery" 
+      :filter="appliedFilter" 
+    />
     
     <div class="mt-4">
       <router-link to="/" class="btn btn-secondary">Back to Dashboard</router-link>
@@ -58,8 +66,26 @@ export default {
     return {
       searchQuery: '',
       filter: 'all',
-      pageSize: 25
+      pageSize: 25,
+      appliedSearchQuery: '',
+      appliedFilter: 'all'
     }
+  },
+  methods: {
+    applyFilters() {
+      // Apply the current filter values
+      this.appliedSearchQuery = this.searchQuery;
+      this.appliedFilter = this.filter;
+      
+      // Force the article list to refresh
+      if (this.$refs.articleList) {
+        this.$refs.articleList.fetchArticles();
+      }
+    }
+  },
+  mounted() {
+    // Apply filters on initial load
+    this.applyFilters();
   }
 }
 </script>
