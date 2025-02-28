@@ -18,6 +18,7 @@ class Article:
     content: Optional[str] = None
     has_comments: bool = False
     comment_count: Optional[int] = None
+    identifier: Optional[str] = None
     
     def __str__(self) -> str:
         """String representation of the article"""
@@ -32,7 +33,8 @@ class Article:
             "author": self.author,
             "content": self.content,
             "has_comments": self.has_comments,
-            "comment_count": self.comment_count
+            "comment_count": self.comment_count,
+            "identifier": self.identifier
         }
     
     @classmethod

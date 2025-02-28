@@ -19,6 +19,10 @@ kafka-python = "^2.0.4"
 openai = "^1.12.0"
 pydantic = "^2.6.1"
 beautifulsoup4 = "^4.12.3"
+fastapi = "^0.103.1"
+uvicorn = "^0.23.2"
+python-multipart = "^0.0.6"
+websockets = "^15.0"
 
 [build-system]
 requires = ["poetry-core"]

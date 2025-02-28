@@ -23,7 +23,7 @@ RAW_COMMENTS_TOPIC = "raw-comments"
 FLAGGED_COMMENTS_TOPIC = "flagged-comments"
 
 # Analysis configuration
-ANALYSIS_THRESHOLD = 0.7  # Threshold for flagging comments
+ANALYSIS_THRESHOLD = 0.69  # Threshold for flagging comments
 
 # Prompt template for comment analysis
 ANALYSIS_PROMPT_TEMPLATE = """

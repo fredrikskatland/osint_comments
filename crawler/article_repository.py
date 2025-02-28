@@ -50,6 +50,7 @@ class ArticleRepository:
                 content TEXT,
                 has_comments BOOLEAN NOT NULL,
                 comment_count INTEGER,
+                identifier TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -91,6 +92,7 @@ class ArticleRepository:
                     content = ?,
                     has_comments = ?,
                     comment_count = ?,
+                    identifier = ?,
                     updated_at = ?
                 WHERE url = ?
                 ''', (
@@ -100,6 +102,7 @@ class ArticleRepository:
                     article.content,
                     article.has_comments,
                     article.comment_count,
+                    article.identifier,
                     now,
                     article.url
                 ))
@@ -109,8 +112,8 @@ class ArticleRepository:
                 cursor.execute('''
                 INSERT INTO articles (
                     url, title, published_date, author, content,
-                    has_comments, comment_count, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    has_comments, comment_count, identifier, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     article.url,
                     article.title,
@@ -119,6 +122,7 @@ class ArticleRepository:
                     article.content,
                     article.has_comments,
                     article.comment_count,
+                    article.identifier,
                     now,
                     now
                 ))
@@ -160,7 +164,8 @@ class ArticleRepository:
                     author=article_dict["author"],
                     content=article_dict["content"],
                     has_comments=bool(article_dict["has_comments"]),
-                    comment_count=article_dict["comment_count"]
+                    comment_count=article_dict["comment_count"],
+                    identifier=article_dict["identifier"]
                 )
             
             return None
@@ -204,7 +209,8 @@ class ArticleRepository:
                     author=article_dict["author"],
                     content=article_dict["content"],
                     has_comments=bool(article_dict["has_comments"]),
-                    comment_count=article_dict["comment_count"]
+                    comment_count=article_dict["comment_count"],
+                    identifier=article_dict["identifier"]
                 )
                 articles.append(article)
             
@@ -247,7 +253,8 @@ class ArticleRepository:
                     author=article_dict["author"],
                     content=article_dict["content"],
                     has_comments=bool(article_dict["has_comments"]),
-                    comment_count=article_dict["comment_count"]
+                    comment_count=article_dict["comment_count"],
+                    identifier=article_dict["identifier"]
                 )
                 articles.append(article)
             

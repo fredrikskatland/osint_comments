@@ -4,10 +4,11 @@ This project provides tools for collecting, analyzing, and processing comments f
 
 ## Project Overview
 
-The OSINT Comments project consists of two main components:
+The OSINT Comments project consists of three main components:
 
 1. **OSINT Comments Core** - A framework for analyzing and processing comments
 2. **E24 Crawler** - A web crawler for collecting articles from e24.no
+3. **Web Interface** - A FastAPI backend and Vue.js frontend for easy interaction
 
 These components work together to create a pipeline for collecting, analyzing, and storing comments from online sources.
 
@@ -30,6 +31,7 @@ The project follows clean architecture principles with separation of concerns:
 4. **Interface Layer**
    - CLI tools for running components
    - API endpoints for integration
+   - Web interface for user interaction
 
 ## Components
 
@@ -49,12 +51,23 @@ A web crawler for e24.no that identifies articles, following clean architecture 
 
 For more details, see the [E24 Crawler documentation](crawler/README.md).
 
+### 3. Web Interface (api/ and frontend/)
+
+A web-based interface for interacting with the OSINT Comments system:
+- FastAPI backend that wraps the core functionality
+- Vue.js frontend with a user-friendly interface
+- Dashboard for viewing statistics
+- Forms for running crawler, gathering comments, and analyzing content
+- Real-time logging via WebSockets for monitoring operations
+- Advanced filtering for comments based on analysis scores
+
 ## Getting Started
 
 ### Prerequisites
 
 - Python 3.10+
 - Poetry (for dependency management)
+- Node.js and npm (for the frontend)
 - Kafka (optional, for the full pipeline)
 - SQLite (for local storage)
 
@@ -66,19 +79,56 @@ git clone https://github.com/yourusername/osint_comments.git
 cd osint_comments
 ```
 
-2. Install dependencies with Poetry:
+2. Install backend dependencies with Poetry:
 ```bash
 poetry install
 ```
 
-3. Activate the Poetry environment:
+3. Install frontend dependencies:
 ```bash
-poetry shell
+cd frontend
+npm install
+cd ..
 ```
 
-### Running the Pipeline
+### Running the Application
 
-The project follows a three-step pipeline:
+You can run the application using the provided batch script:
+
+```bash
+run_app.bat
+```
+
+This will start both the backend and frontend:
+- Backend: http://localhost:8000
+- Frontend: http://localhost:8080
+
+### Real-time Logging
+
+The application includes a real-time logging system using WebSockets:
+
+- **Live Operation Monitoring**: Watch the progress of crawling, comment gathering, and analysis operations in real-time
+- **Filtering Capabilities**: Filter logs by level (info, warning, error), operation type (crawl, gather, analyze), or search text
+- **Persistent History**: Log history is maintained during your session for reviewing past operations
+- **Auto-scrolling**: Logs automatically scroll to show the latest entries, with the option to disable auto-scroll
+
+The log stream is available in the Crawler, Comments, and Analysis views, providing immediate feedback on background operations.
+
+Alternatively, you can start the components manually:
+
+```bash
+# Start the backend
+cd api
+poetry run python run.py
+
+# In another terminal, start the frontend
+cd frontend
+npm run serve
+```
+
+### Running the CLI Pipeline
+
+The project also provides a CLI interface for the pipeline:
 
 1. **Crawl**: Collect articles from e24.no
 2. **Gather**: Fetch comments for articles using the API
